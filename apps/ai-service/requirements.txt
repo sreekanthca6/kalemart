@@ -1,0 +1,8 @@
+fastapi==0.115.0
+uvicorn==0.30.6
+anthropic==0.39.0
+opentelemetry-sdk==1.27.0
+opentelemetry-exporter-otlp-proto-grpc==1.27.0
+opentelemetry-instrumentation-fastapi==0.48b0
+pydantic==2.9.0
+python-dotenv==1.0.1
