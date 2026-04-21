@@ -1,0 +1,250 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: observability
+  labels:
+    grafana_dashboard: "1"
+data:
+  inventory.json: |
+    {
+      "title": "Kalemart — Inventory",
+      "uid": "kalemart-inventory",
+      "tags": ["kalemart"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Total Products",
+          "type": "stat",
+          "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "kalemart_inventory_products_total",
+            "legendFormat": "Products"
+          }]
+        },
+        {
+          "id": 2,
+          "title": "Low Stock Items",
+          "type": "stat",
+          "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 5 },
+                  { "color": "red", "value": 10 }
+                ]
+              }
+            }
+          },
+          "targets": [{
+            "expr": "kalemart_inventory_low_stock_total",
+            "legendFormat": "Low Stock"
+          }]
+        },
+        {
+          "id": 3,
+          "title": "Out of Stock",
+          "type": "stat",
+          "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 1 }
+                ]
+              }
+            }
+          },
+          "targets": [{
+            "expr": "kalemart_inventory_out_of_stock_total",
+            "legendFormat": "Out of Stock"
+          }]
+        },
+        {
+          "id": 4,
+          "title": "Inventory Updates / min",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "rate(kalemart_inventory_updates_total[1m]) * 60",
+            "legendFormat": "Updates/min"
+          }]
+        },
+        {
+          "id": 5,
+          "title": "Recent Inventory Logs",
+          "type": "logs",
+          "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [{
+            "expr": "{service_name=\"kalemart-backend\"} |= \"inventory\"",
+            "legendFormat": ""
+          }]
+        }
+      ]
+    }
+  api-latency.json: |
+    {
+      "title": "Kalemart — API Latency",
+      "uid": "kalemart-api-latency",
+      "tags": ["kalemart"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "15s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Request Rate (rps)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "sum(rate(http_server_duration_count[1m])) by (http_route)",
+            "legendFormat": "{{http_route}}"
+          }]
+        },
+        {
+          "id": 2,
+          "title": "P50 / P95 / P99 Latency (ms)",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(http_server_duration_bucket[5m])) by (le)) * 1000",
+              "legendFormat": "P50"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_bucket[5m])) by (le)) * 1000",
+              "legendFormat": "P95"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_server_duration_bucket[5m])) by (le)) * 1000",
+              "legendFormat": "P99"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "title": "Error Rate (%)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "fixed", "fixedColor": "red" }
+            }
+          },
+          "targets": [{
+            "expr": "100 * sum(rate(http_server_duration_count{http_status_code=~\"5..\"}[1m])) / sum(rate(http_server_duration_count[1m]))",
+            "legendFormat": "Error %"
+          }]
+        },
+        {
+          "id": 4,
+          "title": "Active Traces",
+          "type": "table",
+          "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "targets": [{
+            "queryType": "nativeSearch",
+            "serviceName": "kalemart-backend",
+            "limit": 20
+          }]
+        }
+      ]
+    }
+  ai-service.json: |
+    {
+      "title": "Kalemart — AI Service",
+      "uid": "kalemart-ai",
+      "tags": ["kalemart", "ai"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Insight Requests / min",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "rate(kalemart_ai_requests_total[1m]) * 60",
+            "legendFormat": "Requests/min"
+          }]
+        },
+        {
+          "id": 2,
+          "title": "Claude API Latency P95 (ms)",
+          "type": "gauge",
+          "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 3000 },
+                  { "color": "red", "value": 8000 }
+                ]
+              },
+              "unit": "ms",
+              "min": 0,
+              "max": 15000
+            }
+          },
+          "targets": [{
+            "expr": "histogram_quantile(0.95, sum(rate(kalemart_ai_claude_duration_bucket[5m])) by (le)) * 1000",
+            "legendFormat": "P95"
+          }]
+        },
+        {
+          "id": 3,
+          "title": "Reorder Suggestions Generated",
+          "type": "stat",
+          "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{
+            "expr": "kalemart_ai_reorder_suggestions_total",
+            "legendFormat": "Suggestions"
+          }]
+        },
+        {
+          "id": 4,
+          "title": "AI Service Traces",
+          "type": "table",
+          "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+          "datasource": { "type": "tempo", "uid": "tempo" },
+          "targets": [{
+            "queryType": "nativeSearch",
+            "serviceName": "kalemart-ai-service",
+            "limit": 20
+          }]
+        },
+        {
+          "id": 5,
+          "title": "AI Service Logs",
+          "type": "logs",
+          "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [{
+            "expr": "{service_name=\"kalemart-ai-service\"}",
+            "legendFormat": ""
+          }]
+        }
+      ]
+    }

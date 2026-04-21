@@ -1,0 +1,81 @@
+{
+  "title": "Kalemart — AI Service",
+  "uid": "kalemart-ai",
+  "tags": ["kalemart", "ai"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Insight Requests / min",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "rate(kalemart_ai_requests_total[1m]) * 60",
+        "legendFormat": "Requests/min"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "Claude API Latency P95 (ms)",
+      "type": "gauge",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 3000 },
+              { "color": "red", "value": 8000 }
+            ]
+          },
+          "unit": "ms",
+          "min": 0,
+          "max": 15000
+        }
+      },
+      "targets": [{
+        "expr": "histogram_quantile(0.95, sum(rate(kalemart_ai_claude_duration_bucket[5m])) by (le)) * 1000",
+        "legendFormat": "P95"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Reorder Suggestions Generated",
+      "type": "stat",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "kalemart_ai_reorder_suggestions_total",
+        "legendFormat": "Suggestions"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "AI Service Traces",
+      "type": "table",
+      "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
+      "datasource": { "type": "tempo", "uid": "tempo" },
+      "targets": [{
+        "queryType": "nativeSearch",
+        "serviceName": "kalemart-ai-service",
+        "limit": 20
+      }]
+    },
+    {
+      "id": 5,
+      "title": "AI Service Logs",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{
+        "expr": "{service_name=\"kalemart-ai-service\"}",
+        "legendFormat": ""
+      }]
+    }
+  ]
+}

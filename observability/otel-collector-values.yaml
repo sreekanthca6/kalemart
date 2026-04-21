@@ -1,0 +1,98 @@
+mode: deployment
+
+replicaCount: 1
+
+image:
+  repository: otel/opentelemetry-collector-contrib
+  tag: "0.123.0"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+service:
+  type: ClusterIP
+
+ports:
+  otlp:
+    enabled: true
+    containerPort: 4317
+    servicePort: 4317
+    protocol: TCP
+  otlp-http:
+    enabled: true
+    containerPort: 4318
+    servicePort: 4318
+    protocol: TCP
+  metrics:
+    enabled: true
+    containerPort: 8888
+    servicePort: 8888
+    protocol: TCP
+
+config:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+  processors:
+    memory_limiter:
+      check_interval: 5s
+      limit_mib: 400
+      spike_limit_mib: 128
+    batch:
+      timeout: 10s
+      send_batch_size: 512
+    # Enrich spans with k8s metadata
+    resource:
+      attributes:
+        - key: deployment.environment
+          value: "local"
+          action: upsert
+
+  exporters:
+    # Traces → Tempo
+    otlp/tempo:
+      endpoint: tempo.observability.svc.cluster.local:4317
+      tls:
+        insecure: true
+    # Metrics → Prometheus (remote write)
+    prometheusremotewrite:
+      endpoint: http://prometheus-server.observability.svc.cluster.local:9090/api/v1/write
+      tls:
+        insecure_skip_verify: true
+    # Logs → Loki
+    loki:
+      endpoint: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
+      default_labels_enabled:
+        exporter: true
+        job: true
+    # Debug (remove in prod)
+    debug:
+      verbosity: normal
+
+  service:
+    pipelines:
+      traces:
+        receivers: [otlp]
+        processors: [memory_limiter, resource, batch]
+        exporters: [otlp/tempo]
+      metrics:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [prometheusremotewrite]
+      logs:
+        receivers: [otlp]
+        processors: [memory_limiter, batch]
+        exporters: [loki]
+    telemetry:
+      metrics:
+        address: 0.0.0.0:8888

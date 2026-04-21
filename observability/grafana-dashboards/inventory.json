@@ -1,0 +1,88 @@
+{
+  "title": "Kalemart — Inventory",
+  "uid": "kalemart-inventory",
+  "tags": ["kalemart"],
+  "timezone": "browser",
+  "schemaVersion": 38,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Total Products",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "kalemart_inventory_products_total",
+        "legendFormat": "Products"
+      }]
+    },
+    {
+      "id": 2,
+      "title": "Low Stock Items",
+      "type": "stat",
+      "gridPos": { "x": 4, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "kalemart_inventory_low_stock_total",
+        "legendFormat": "Low Stock"
+      }]
+    },
+    {
+      "id": 3,
+      "title": "Out of Stock",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 0, "w": 4, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      },
+      "targets": [{
+        "expr": "kalemart_inventory_out_of_stock_total",
+        "legendFormat": "Out of Stock"
+      }]
+    },
+    {
+      "id": 4,
+      "title": "Inventory Updates / min",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{
+        "expr": "rate(kalemart_inventory_updates_total[1m]) * 60",
+        "legendFormat": "Updates/min"
+      }]
+    },
+    {
+      "id": 5,
+      "title": "Recent Inventory Logs",
+      "type": "logs",
+      "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [{
+        "expr": "{service_name=\"kalemart-backend\"} |= \"inventory\"",
+        "legendFormat": ""
+      }]
+    }
+  ]
+}

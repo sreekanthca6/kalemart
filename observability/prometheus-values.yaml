@@ -1,0 +1,42 @@
+server:
+  persistentVolume:
+    enabled: false      # use emptyDir for local dev
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+  retention: "7d"
+  # Enable remote write receiver so OTel Collector can push metrics
+  extraFlags:
+    - web.enable-remote-write-receiver
+
+  global:
+    scrape_interval: 15s
+    evaluation_interval: 15s
+
+  # Scrape the OTel Collector's own metrics
+  extraScrapeConfigs: |
+    - job_name: 'otel-collector'
+      static_configs:
+        - targets: ['otel-collector.observability.svc.cluster.local:8888']
+    - job_name: 'kalemart-backend'
+      static_configs:
+        - targets: ['kalemart-backend.kalemart.svc.cluster.local:4000']
+    - job_name: 'kalemart-ai-service'
+      static_configs:
+        - targets: ['kalemart-ai-service.kalemart.svc.cluster.local:5000']
+
+alertmanager:
+  enabled: false        # add back when alert rules are defined
+
+prometheus-pushgateway:
+  enabled: false
+
+kube-state-metrics:
+  enabled: true
+
+nodeExporter:
+  enabled: true
