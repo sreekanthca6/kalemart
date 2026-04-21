@@ -7,13 +7,10 @@ const store = require('./db/store');
 
 const app = express();
 
-// Parse raw body for Shopify HMAC verification
-app.use((req, _res, next) => {
-  let raw = '';
-  req.on('data', chunk => { raw += chunk; });
-  req.on('end', () => { req.rawBody = raw; next(); });
-});
-app.use(express.json());
+// Capture raw body for Shopify HMAC verification via verify callback
+app.use(express.json({
+  verify: (req, _res, buf) => { req.rawBody = buf.toString(); },
+}));
 app.use(requestLogger);
 
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'backend', env: config.nodeEnv }));
