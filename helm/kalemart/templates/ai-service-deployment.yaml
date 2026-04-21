@@ -1,0 +1,54 @@
+{{- if .Values.aiService.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kalemart-ai-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "kalemart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-service
+spec:
+  replicas: {{ .Values.aiService.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "kalemart.name" . }}
+      app.kubernetes.io/component: ai-service
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "kalemart.name" . }}
+        app.kubernetes.io/component: ai-service
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: ai-service
+          image: {{ include "kalemart.image" (dict "global" .Values.global "image" .Values.aiService.image) }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.aiService.service.port }}
+          env:
+            {{- range $k, $v := .Values.aiService.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+            {{- include "kalemart.otelEnv" (dict "Values" .Values "component" "ai-service") | nindent 12 }}
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kalemart-secrets
+                  key: ANTHROPIC_API_KEY
+          resources:
+            {{- toYaml .Values.aiService.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.aiService.service.port }}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: {{ .Values.aiService.service.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 10
+{{- end }}

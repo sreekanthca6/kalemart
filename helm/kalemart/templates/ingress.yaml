@@ -1,0 +1,44 @@
+{{- if .Values.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kalemart
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "kalemart.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host }}
+      secretName: {{ .Values.ingress.tls.secretName }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kalemart-frontend
+                port:
+                  number: {{ .Values.frontend.service.port }}
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: kalemart-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+          - path: /api/insights
+            pathType: Prefix
+            backend:
+              service:
+                name: kalemart-ai-service
+                port:
+                  number: {{ .Values.aiService.service.port }}
+{{- end }}

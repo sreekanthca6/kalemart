@@ -1,0 +1,27 @@
+{{- $services := dict "frontend" .Values.frontend "backend" .Values.backend "aiService" .Values.aiService }}
+{{- range $name, $svc := $services }}
+{{- if and $svc.enabled $svc.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ printf "kalemart-%s" $name | kebabcase }}
+  namespace: {{ $.Values.global.namespace }}
+  labels:
+    {{- include "kalemart.labels" $ | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ printf "kalemart-%s" $name | kebabcase }}
+  minReplicas: {{ $svc.hpa.minReplicas }}
+  maxReplicas: {{ $svc.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $svc.hpa.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- end }}

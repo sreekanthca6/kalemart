@@ -1,0 +1,20 @@
+{{- if .Values.aiService.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: kalemart-ai-service
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "kalemart.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-service
+spec:
+  type: {{ .Values.aiService.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "kalemart.name" . }}
+    app.kubernetes.io/component: ai-service
+  ports:
+    - port: {{ .Values.aiService.service.port }}
+      targetPort: {{ .Values.aiService.service.port }}
+      protocol: TCP
+      name: http
+{{- end }}

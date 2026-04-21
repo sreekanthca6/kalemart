@@ -1,0 +1,13 @@
+apiVersion: v2
+name: kalemart
+description: Kalemart Inventory Management System
+type: application
+version: 0.1.0
+appVersion: "0.0.1"
+keywords:
+  - inventory
+  - kubernetes
+  - kalemart
+maintainers:
+  - name: sreekanthca6
+    email: sreekanthca6@gmail.com
