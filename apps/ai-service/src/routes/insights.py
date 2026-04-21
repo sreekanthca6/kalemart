@@ -1,28 +1,24 @@
 from fastapi import APIRouter
-from pydantic import BaseModel
-import anthropic
-import os
+from ..models.schemas import InsightRequest, ReorderRequest, ComboRequest
+from ..services import claude_service
 
 router = APIRouter()
-client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY", ""))
-
-class InsightRequest(BaseModel):
-    context: str
-    question: str
 
 @router.post("/")
 async def get_insight(req: InsightRequest):
-    message = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        messages=[{
-            "role": "user",
-            "content": f"Kalemart inventory context:\n{req.context}\n\nQuestion: {req.question}"
-        }]
-    )
-    return {"insight": message.content[0].text}
+    insight = claude_service.ask(req.context, req.question)
+    return {"insight": insight}
+
+@router.post("/reorder")
+async def reorder_suggestions(req: ReorderRequest):
+    suggestions = claude_service.reorder_suggestions(req.items)
+    return {"suggestions": suggestions, "item_count": len(req.items)}
+
+@router.post("/combos")
+async def combo_recommendations(req: ComboRequest):
+    recommendations = claude_service.combo_recommendations(req.productIds)
+    return {"recommendations": recommendations}
 
 @router.get("/reorder-suggestions")
-async def reorder_suggestions():
-    # TODO: pull low-stock items and ask Claude for reorder recommendations
-    return {"suggestions": [], "message": "reorder suggestions stub"}
+async def reorder_suggestions_stub():
+    return {"message": "POST /api/insights/reorder with {items:[]} for AI-powered suggestions"}
