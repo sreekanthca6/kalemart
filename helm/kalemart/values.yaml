@@ -40,6 +40,10 @@ backend:
   env:
     NODE_ENV: production
     PORT: "4000"
+    PGHOST: "kalemart-postgres"
+    PGPORT: "5432"
+    PGDATABASE: "kalemart"
+    PGUSER: "kalemart"
   resources:
     requests:
       cpu: 100m
@@ -101,5 +105,20 @@ ingress:
     enabled: false
     secretName: kalemart-tls
 
+postgres:
+  enabled: true
+  database: kalemart
+  user: kalemart
+  storage: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
 secrets:
   anthropicApiKey: ""
+  postgresPassword: "kalemart_secret_2024"
+  jwtSecret: "dev-jwt-secret-change-in-prod"

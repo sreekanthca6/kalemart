@@ -1,6 +1,6 @@
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { randomUUID } = require('crypto');
-const pool = require('../db/pool');
+const { queryAsTenant } = require('../db/tenantQuery');
 const { inventoryUpdatesTotal } = require('../metrics');
 
 const tracer = trace.getTracer('kalemart-backend');
@@ -25,7 +25,7 @@ function mapRow(r) {
 async function list() {
   return tracer.startActiveSpan('inventory.list', async span => {
     try {
-      const { rows } = await pool.query(INV_SELECT + ' ORDER BY i.id');
+      const { rows } = await queryAsTenant(INV_SELECT + ' ORDER BY i.id');
       span.setAttribute('inventory.count', rows.length);
       return rows.map(mapRow);
     } catch (err) {
@@ -40,7 +40,7 @@ async function list() {
 async function getLowStock() {
   return tracer.startActiveSpan('inventory.getLowStock', async span => {
     try {
-      const { rows } = await pool.query(INV_SELECT + ' WHERE i.quantity < i.min_quantity ORDER BY i.id');
+      const { rows } = await queryAsTenant(INV_SELECT + ' WHERE i.quantity < i.min_quantity ORDER BY i.id');
       span.setAttribute('inventory.low_stock_count', rows.length);
       return rows.map(mapRow);
     } catch (err) {
@@ -56,7 +56,7 @@ async function getById(id) {
   return tracer.startActiveSpan('inventory.getById', async span => {
     span.setAttribute('inventory.id', id);
     try {
-      const { rows } = await pool.query(INV_SELECT + ' WHERE i.id = $1', [id]);
+      const { rows } = await queryAsTenant(INV_SELECT + ' WHERE i.id = $1', [id]);
       if (!rows.length) {
         const err = new Error(`Inventory item ${id} not found`);
         err.status = 404;
@@ -76,7 +76,7 @@ async function updateQuantity(id, delta, reason = 'manual') {
   return tracer.startActiveSpan('inventory.updateQuantity', async span => {
     span.setAttributes({ 'inventory.id': id, 'inventory.delta': delta, 'inventory.reason': reason });
     try {
-      const { rows } = await pool.query(
+      const { rows } = await queryAsTenant(
         `UPDATE inventory
          SET quantity = GREATEST(0, quantity + $1), updated_at = NOW()
          WHERE id = $2
@@ -89,7 +89,7 @@ async function updateQuantity(id, delta, reason = 'manual') {
         err.status = 404;
         throw err;
       }
-      const { rows: pRows } = await pool.query(
+      const { rows: pRows } = await queryAsTenant(
         'SELECT id, name, sku, category, price::float, barcode, organic FROM products WHERE id = $1',
         [rows[0].productId]
       );
@@ -109,7 +109,7 @@ async function create(productId, quantity, minQuantity, location) {
   return tracer.startActiveSpan('inventory.create', async span => {
     span.setAttribute('inventory.productId', productId);
     try {
-      const { rows: pRows } = await pool.query(
+      const { rows: pRows } = await queryAsTenant(
         'SELECT id, name, sku, category, price::float, barcode, organic FROM products WHERE id = $1',
         [productId]
       );
@@ -119,9 +119,9 @@ async function create(productId, quantity, minQuantity, location) {
         throw err;
       }
       const id = `inv_${randomUUID().split('-')[0]}`;
-      const { rows } = await pool.query(
-        `INSERT INTO inventory (id, product_id, quantity, min_quantity, location, updated_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())
+      const { rows } = await queryAsTenant(
+        `INSERT INTO inventory (id, product_id, quantity, min_quantity, location, updated_at, tenant_id)
+         VALUES ($1, $2, $3, $4, $5, NOW(), current_setting('app.current_tenant_id'))
          RETURNING id, product_id AS "productId", quantity, min_quantity AS "minQuantity",
                    location, expiry_date AS "expiryDate", updated_at AS "updatedAt"`,
         [id, productId, quantity, minQuantity, location]

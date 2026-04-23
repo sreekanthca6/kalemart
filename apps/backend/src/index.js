@@ -2,10 +2,10 @@ const express = require('express');
 const config = require('./config');
 const errorHandler = require('./middleware/errorHandler');
 const requestLogger = require('./middleware/requestLogger');
+const authMiddleware = require('./middleware/auth');
 const { registerInventoryObservables } = require('./metrics');
 const pool = require('./db/pool');
 const { migrate } = require('./db/migrate');
-const { loadSettings } = require('./services/settings');
 
 const app = express();
 
@@ -14,8 +14,12 @@ app.use(express.json({
 }));
 app.use(requestLogger);
 
+// Public routes
 app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'backend', env: config.nodeEnv }));
+app.use('/auth', require('./routes/auth'));
 
+// All /api routes require a valid JWT — tenant context set by authMiddleware
+app.use('/api', authMiddleware);
 app.use('/api/inventory', require('./routes/inventory'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
@@ -37,7 +41,6 @@ let server;
 async function start() {
   try {
     await migrate();
-    await loadSettings();
   } catch (err) {
     console.error(JSON.stringify({ event: 'db_init_error', error: err.message }));
   }

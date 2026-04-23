@@ -1,7 +1,7 @@
 const router = require('express').Router();
 const { trace } = require('@opentelemetry/api');
 const { randomUUID } = require('crypto');
-const pool = require('../db/pool');
+const { queryAsTenant } = require('../db/tenantQuery');
 const inventorySvc = require('../services/inventoryService');
 const config = require('../config');
 const aiClient = require('../services/aiClient');
@@ -21,7 +21,7 @@ function first(item) {
 }
 
 async function calcVelocity(days = 14) {
-  const { rows } = await pool.query(
+  const { rows } = await queryAsTenant(
     `SELECT oi.inventory_id AS id, COALESCE(SUM(oi.quantity), 0)::int AS sold
      FROM order_items oi
      JOIN orders o ON o.id = oi.order_id

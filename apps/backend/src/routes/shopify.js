@@ -24,7 +24,7 @@ function shopifyAuth(req, res, next) {
   next();
 }
 
-const pool = require('../db/pool');
+const { queryAsTenant } = require('../db/tenantQuery');
 
 // Webhook: product created or updated → upsert product record
 router.post('/webhooks/products', shopifyAuth, async (req, res, next) => {
@@ -45,7 +45,7 @@ router.post('/webhooks/orders', shopifyAuth, async (req, res, next) => {
       const lineItems = req.body.line_items || [];
       let processed = 0;
       for (const item of lineItems) {
-        const { rows } = await pool.query(
+        const { rows } = await queryAsTenant(
           `SELECT i.id FROM inventory i
            JOIN products p ON p.id = i.product_id
            WHERE p.sku = $1 LIMIT 1`,

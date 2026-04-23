@@ -1,6 +1,6 @@
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { randomUUID } = require('crypto');
-const pool = require('../db/pool');
+const { queryAsTenant } = require('../db/tenantQuery');
 
 const tracer = trace.getTracer('kalemart-backend');
 
@@ -15,7 +15,7 @@ async function list(category) {
         span.setAttribute('product.filter.category', category);
       }
       query += ' ORDER BY id';
-      const { rows } = await pool.query(query, params);
+      const { rows } = await queryAsTenant(query, params);
       span.setAttribute('product.count', rows.length);
       return rows;
     } catch (err) {
@@ -31,7 +31,7 @@ async function getById(id) {
   return tracer.startActiveSpan('product.getById', async span => {
     span.setAttribute('product.id', id);
     try {
-      const { rows } = await pool.query(
+      const { rows } = await queryAsTenant(
         'SELECT id, name, sku, category, price::float, barcode, organic FROM products WHERE id = $1',
         [id]
       );
@@ -55,9 +55,9 @@ async function create(data) {
     try {
       const id = `prod_${randomUUID().split('-')[0]}`;
       const { name, sku, category, price, barcode, organic } = data;
-      const { rows } = await pool.query(
-        `INSERT INTO products (id, name, sku, category, price, barcode, organic)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+      const { rows } = await queryAsTenant(
+        `INSERT INTO products (id, name, sku, category, price, barcode, organic, tenant_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, current_setting('app.current_tenant_id'))
          RETURNING id, name, sku, category, price::float, barcode, organic`,
         [id, name, sku, category, price, barcode || null, organic || false]
       );
@@ -78,9 +78,9 @@ async function upsertFromShopify(shopifyProduct) {
     try {
       const variant = shopifyProduct.variants?.[0];
       const id = `prod_shopify_${shopifyProduct.id}`;
-      const { rows } = await pool.query(
-        `INSERT INTO products (id, name, sku, category, price, barcode)
-         VALUES ($1, $2, $3, $4, $5, $6)
+      const { rows } = await queryAsTenant(
+        `INSERT INTO products (id, name, sku, category, price, barcode, tenant_id)
+         VALUES ($1, $2, $3, $4, $5, $6, current_setting('app.current_tenant_id'))
          ON CONFLICT (id) DO UPDATE SET
            name = EXCLUDED.name, sku = EXCLUDED.sku,
            category = EXCLUDED.category, price = EXCLUDED.price,

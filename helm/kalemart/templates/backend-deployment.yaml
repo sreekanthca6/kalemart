@@ -48,6 +48,11 @@ spec:
                 secretKeyRef:
                   name: kalemart-secrets
                   key: POSTGRES_PASSWORD
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: kalemart-secrets
+                  key: JWT_SECRET
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
           lifecycle:

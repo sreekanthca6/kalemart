@@ -93,6 +93,133 @@ CREATE TABLE IF NOT EXISTS app_settings (
   value      TEXT,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ── Multi-tenancy ─────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS tenants (
+  id         TEXT PRIMARY KEY,
+  name       TEXT NOT NULL,
+  plan       TEXT NOT NULL DEFAULT 'starter',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id            TEXT PRIMARY KEY,
+  tenant_id     TEXT NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  email         TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role          TEXT NOT NULL DEFAULT 'admin',
+  created_at    TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Add tenant_id to all data tables (nullable first for safe migration)
+ALTER TABLE products          ADD COLUMN IF NOT EXISTS tenant_id TEXT REFERENCES tenants(id);
+ALTER TABLE inventory         ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE orders            ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE order_items       ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE expenses          ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE tax_periods        ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE app_settings       ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+
+-- Seed default tenant for existing data (idempotent)
+INSERT INTO tenants (id, name) VALUES ('tenant_default', 'KaleMart24')
+ON CONFLICT (id) DO NOTHING;
+
+-- Backfill existing rows
+UPDATE products           SET tenant_id = 'tenant_default' WHERE tenant_id IS NULL;
+UPDATE inventory          SET tenant_id = 'tenant_default' WHERE tenant_id IS NULL;
+UPDATE orders             SET tenant_id = 'tenant_default' WHERE tenant_id IS NULL;
+UPDATE order_items        SET tenant_id = 'tenant_default' WHERE tenant_id IS NULL;
+UPDATE expenses           SET tenant_id = 'tenant_default' WHERE tenant_id IS NULL;
+UPDATE expense_categories SET tenant_id = 'tenant_default' WHERE tenant_id IS NULL;
+UPDATE tax_periods         SET tenant_id = 'tenant_default' WHERE tenant_id IS NULL;
+UPDATE app_settings        SET tenant_id = 'tenant_default' WHERE tenant_id IS NULL;
+
+-- Set NOT NULL (safe after backfill)
+DO $$ BEGIN ALTER TABLE products          ALTER COLUMN tenant_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE inventory         ALTER COLUMN tenant_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE orders            ALTER COLUMN tenant_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE order_items       ALTER COLUMN tenant_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE expenses          ALTER COLUMN tenant_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE expense_categories ALTER COLUMN tenant_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE tax_periods        ALTER COLUMN tenant_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+DO $$ BEGIN ALTER TABLE app_settings       ALTER COLUMN tenant_id SET NOT NULL; EXCEPTION WHEN others THEN NULL; END $$;
+
+-- Migrate app_settings primary key from (key) to (tenant_id, key)
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'app_settings'::regclass AND contype = 'p' AND array_length(conkey, 1) = 2
+  ) THEN
+    ALTER TABLE app_settings DROP CONSTRAINT IF EXISTS app_settings_pkey;
+    ALTER TABLE app_settings ADD PRIMARY KEY (tenant_id, key);
+  END IF;
+END $$;
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_products_tenant    ON products(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_tenant   ON inventory(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_orders_tenant      ON orders(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_tenant    ON expenses(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_tax_periods_tenant ON tax_periods(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_app_settings_tenant ON app_settings(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_expense_cats_tenant ON expense_categories(tenant_id);
+
+-- Enable Row Level Security
+ALTER TABLE products           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE inventory          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE orders             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE order_items        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expense_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tax_periods        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_settings       ENABLE ROW LEVEL SECURITY;
+
+-- FORCE applies RLS even to the table owner
+ALTER TABLE products           FORCE ROW LEVEL SECURITY;
+ALTER TABLE inventory          FORCE ROW LEVEL SECURITY;
+ALTER TABLE orders             FORCE ROW LEVEL SECURITY;
+ALTER TABLE order_items        FORCE ROW LEVEL SECURITY;
+ALTER TABLE expenses           FORCE ROW LEVEL SECURITY;
+ALTER TABLE expense_categories FORCE ROW LEVEL SECURITY;
+ALTER TABLE tax_periods        FORCE ROW LEVEL SECURITY;
+ALTER TABLE app_settings       FORCE ROW LEVEL SECURITY;
+
+-- RLS policies: no tenant context → zero rows (safe by default)
+DROP POLICY IF EXISTS tenant_isolation ON products;
+DROP POLICY IF EXISTS tenant_isolation ON inventory;
+DROP POLICY IF EXISTS tenant_isolation ON orders;
+DROP POLICY IF EXISTS tenant_isolation ON order_items;
+DROP POLICY IF EXISTS tenant_isolation ON expenses;
+DROP POLICY IF EXISTS tenant_isolation ON expense_categories;
+DROP POLICY IF EXISTS tenant_isolation ON tax_periods;
+DROP POLICY IF EXISTS tenant_isolation ON app_settings;
+
+CREATE POLICY tenant_isolation ON products
+  USING (tenant_id = current_setting('app.current_tenant_id', true))
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY tenant_isolation ON inventory
+  USING (tenant_id = current_setting('app.current_tenant_id', true))
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY tenant_isolation ON orders
+  USING (tenant_id = current_setting('app.current_tenant_id', true))
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY tenant_isolation ON order_items
+  USING (tenant_id = current_setting('app.current_tenant_id', true))
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY tenant_isolation ON expenses
+  USING (tenant_id = current_setting('app.current_tenant_id', true))
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY tenant_isolation ON expense_categories
+  USING (tenant_id = current_setting('app.current_tenant_id', true))
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY tenant_isolation ON tax_periods
+  USING (tenant_id = current_setting('app.current_tenant_id', true))
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
+CREATE POLICY tenant_isolation ON app_settings
+  USING (tenant_id = current_setting('app.current_tenant_id', true))
+  WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true));
 `;
 
 async function migrate() {
