@@ -166,6 +166,15 @@ CREATE INDEX IF NOT EXISTS idx_tax_periods_tenant ON tax_periods(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_app_settings_tenant ON app_settings(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_expense_cats_tenant ON expense_categories(tenant_id);
 
+-- Non-superuser app role so RLS is enforced (superusers bypass RLS even with FORCE)
+DO $$ BEGIN
+  CREATE ROLE kalemart_app WITH NOLOGIN NOSUPERUSER NOBYPASSRLS;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+GRANT USAGE ON SCHEMA public TO kalemart_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kalemart_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO kalemart_app;
+
 -- Enable Row Level Security
 ALTER TABLE products           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inventory          ENABLE ROW LEVEL SECURITY;

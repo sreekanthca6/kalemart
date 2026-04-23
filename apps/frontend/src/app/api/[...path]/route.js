@@ -1,9 +1,13 @@
 const BACKEND = process.env.BACKEND_URL || 'http://localhost:4000';
 
 async function proxy(request, { params }) {
-  const path = (await params).path.join('/');
+  const segments = (await params).path;
+  const path = segments.join('/');
   const search = new URL(request.url).search;
-  const url = `${BACKEND}/api/${path}${search}`;
+  // Auth routes live at /auth/* on the backend (not under /api)
+  const url = segments[0] === 'auth'
+    ? `${BACKEND}/${path}${search}`
+    : `${BACKEND}/api/${path}${search}`;
 
   const authHeader = request.headers.get('authorization');
   const init = {

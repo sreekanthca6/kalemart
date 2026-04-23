@@ -1,6 +1,6 @@
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { randomUUID } = require('crypto');
-const { queryAsTenant } = require('../db/tenantQuery');
+const { queryAsTenant, transactAsTenant } = require('../db/tenantQuery');
 
 const tracer = trace.getTracer('kalemart-backend');
 
@@ -55,14 +55,23 @@ async function create(data) {
     try {
       const id = `prod_${randomUUID().split('-')[0]}`;
       const { name, sku, category, price, barcode, organic } = data;
-      const { rows } = await queryAsTenant(
-        `INSERT INTO products (id, name, sku, category, price, barcode, organic, tenant_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, current_setting('app.current_tenant_id'))
-         RETURNING id, name, sku, category, price::float, barcode, organic`,
-        [id, name, sku, category, price, barcode || null, organic || false]
-      );
+      const product = await transactAsTenant(async client => {
+        const { rows } = await client.query(
+          `INSERT INTO products (id, name, sku, category, price, barcode, organic, tenant_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, current_setting('app.current_tenant_id'))
+           RETURNING id, name, sku, category, price::float, barcode, organic`,
+          [id, name, sku, category, price, barcode || null, organic || false]
+        );
+        const invId = `inv_${randomUUID().replace(/-/g,'').slice(0,8)}`;
+        await client.query(
+          `INSERT INTO inventory (id, tenant_id, product_id, quantity, min_quantity, location)
+           VALUES ($1, current_setting('app.current_tenant_id'), $2, 0, 5, 'Main shelf')`,
+          [invId, id]
+        );
+        return rows[0];
+      });
       span.setAttribute('product.id', id);
-      return rows[0];
+      return product;
     } catch (err) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
       throw err;

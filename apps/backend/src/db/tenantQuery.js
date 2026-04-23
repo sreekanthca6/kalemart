@@ -18,7 +18,8 @@ async function queryAsTenant(text, params) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
+    await client.query('SET LOCAL ROLE kalemart_app');
+    await client.query('SELECT set_config($1, $2, true)', ['app.current_tenant_id', tenantId]);
     const result = await client.query(text, params);
     await client.query('COMMIT');
     return result;
@@ -35,7 +36,8 @@ async function transactAsTenant(fn) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('SET LOCAL app.current_tenant_id = $1', [tenantId]);
+    await client.query('SET LOCAL ROLE kalemart_app');
+    await client.query('SELECT set_config($1, $2, true)', ['app.current_tenant_id', tenantId]);
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
