@@ -9,6 +9,11 @@ metadata:
     app.kubernetes.io/component: backend
 spec:
   replicas: {{ .Values.backend.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "kalemart.name" . }}
@@ -20,6 +25,7 @@ spec:
         app.kubernetes.io/component: backend
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
         - name: backend
           image: {{ include "kalemart.image" (dict "global" .Values.global "image" .Values.backend.image) }}
@@ -37,8 +43,17 @@ spec:
                 secretKeyRef:
                   name: kalemart-secrets
                   key: ANTHROPIC_API_KEY
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kalemart-secrets
+                  key: POSTGRES_PASSWORD
           resources:
             {{- toYaml .Values.backend.resources | nindent 12 }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
           livenessProbe:
             httpGet:
               path: /health

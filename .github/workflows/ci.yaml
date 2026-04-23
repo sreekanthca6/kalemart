@@ -1,0 +1,160 @@
+name: CI — Build & Push Images
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: registry.digitalocean.com/kalemart
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend:    ${{ steps.filter.outputs.backend }}
+      frontend:   ${{ steps.filter.outputs.frontend }}
+      ai-service: ${{ steps.filter.outputs.ai-service }}
+      worker:     ${{ steps.filter.outputs.worker }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'apps/backend/**'
+              - 'helm/kalemart/**'
+            frontend:
+              - 'apps/frontend/**'
+              - 'helm/kalemart/**'
+            ai-service:
+              - 'apps/ai-service/**'
+              - 'helm/kalemart/**'
+            worker:
+              - 'apps/worker/**'
+              - 'helm/kalemart/**'
+
+  build-backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Log in to DOCR
+        run: doctl registry login --expiry-seconds 600
+      - name: Build & push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/backend
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.REGISTRY }}/backend:${{ github.sha }}
+            ${{ env.REGISTRY }}/backend:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/backend:latest
+          cache-to: type=inline
+
+  build-frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Log in to DOCR
+        run: doctl registry login --expiry-seconds 600
+      - name: Build & push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/frontend
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.REGISTRY }}/frontend:${{ github.sha }}
+            ${{ env.REGISTRY }}/frontend:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/frontend:latest
+          cache-to: type=inline
+
+  build-ai-service:
+    needs: changes
+    if: needs.changes.outputs.ai-service == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Log in to DOCR
+        run: doctl registry login --expiry-seconds 600
+      - name: Build & push ai-service
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/ai-service
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.REGISTRY }}/ai-service:${{ github.sha }}
+            ${{ env.REGISTRY }}/ai-service:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/ai-service:latest
+          cache-to: type=inline
+
+  build-worker:
+    needs: changes
+    if: needs.changes.outputs.worker == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Log in to DOCR
+        run: doctl registry login --expiry-seconds 600
+      - name: Build & push worker
+        uses: docker/build-push-action@v5
+        with:
+          context: apps/worker
+          push: ${{ github.ref == 'refs/heads/main' }}
+          tags: |
+            ${{ env.REGISTRY }}/worker:${{ github.sha }}
+            ${{ env.REGISTRY }}/worker:latest
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/worker:latest
+          cache-to: type=inline
+
+  deploy:
+    needs: [build-backend, build-frontend, build-ai-service, build-worker]
+    if: |
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      !contains(needs.*.result, 'failure')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: Set up kubeconfig
+        run: doctl kubernetes cluster kubeconfig save ${{ secrets.DOKS_CLUSTER_NAME }}
+      - name: Helm upgrade (zero-downtime)
+        run: |
+          helm upgrade kalemart helm/kalemart \
+            -f helm/kalemart/values.yaml \
+            -f helm/kalemart/values.prod.yaml \
+            --set backend.image.tag=${{ github.sha }} \
+            --set frontend.image.tag=${{ github.sha }} \
+            --set aiService.image.tag=${{ github.sha }} \
+            --set worker.image.tag=${{ github.sha }} \
+            --set global.imageRegistry=${{ env.REGISTRY }} \
+            --namespace kalemart \
+            --create-namespace \
+            --wait \
+            --timeout 5m \
+            --atomic

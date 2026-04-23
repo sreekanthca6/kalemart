@@ -3,11 +3,12 @@ const config = require('./config');
 const errorHandler = require('./middleware/errorHandler');
 const requestLogger = require('./middleware/requestLogger');
 const { registerInventoryObservables } = require('./metrics');
-const store = require('./db/store');
+const pool = require('./db/pool');
+const { migrate } = require('./db/migrate');
+const { loadSettings } = require('./services/settings');
 
 const app = express();
 
-// Capture raw body for Shopify HMAC verification via verify callback
 app.use(express.json({
   verify: (req, _res, buf) => { req.rawBody = buf.toString(); },
 }));
@@ -20,11 +21,41 @@ app.use('/api/products', require('./routes/products'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/shopify', require('./routes/shopify'));
 app.use('/api/ai', require('./routes/ai'));
+app.use('/api/supervisor', require('./routes/supervisor'));
+app.use('/api/finance',      require('./routes/finance'));
+app.use('/api/order-basket', require('./routes/orderBasket'));
+app.use('/api/bookkeeping',  require('./routes/bookkeeping'));
+app.use('/api/tax',          require('./routes/tax'));
+app.use('/api/setup',        require('./routes/setup'));
 
 app.use(errorHandler);
 
-registerInventoryObservables(store);
+registerInventoryObservables(pool);
 
-app.listen(config.port, () => {
-  console.log(JSON.stringify({ event: 'server_start', port: config.port, env: config.nodeEnv }));
-});
+let server;
+
+async function start() {
+  try {
+    await migrate();
+    await loadSettings();
+  } catch (err) {
+    console.error(JSON.stringify({ event: 'db_init_error', error: err.message }));
+  }
+  server = app.listen(config.port, () => {
+    console.log(JSON.stringify({ event: 'server_start', port: config.port, env: config.nodeEnv }));
+  });
+}
+
+async function shutdown() {
+  console.log(JSON.stringify({ event: 'server_shutdown' }));
+  server?.close(async () => {
+    await pool.end().catch(() => {});
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 25000);
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+start();

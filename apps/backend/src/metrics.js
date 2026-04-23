@@ -28,26 +28,26 @@ const orderValueTotal = meter.createCounter('kalemart_order_value_total', {
   unit: 'GBP',
 });
 
-// Register observable callbacks
-function registerInventoryObservables(store) {
-  inventoryProductsTotal.addCallback(result => {
-    result.observe(store.inventory.size);
+function registerInventoryObservables(pool) {
+  inventoryProductsTotal.addCallback(async result => {
+    try {
+      const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM inventory');
+      result.observe(rows[0].n);
+    } catch { result.observe(0); }
   });
 
-  inventoryLowStockTotal.addCallback(result => {
-    let count = 0;
-    for (const item of store.inventory.values()) {
-      if (item.quantity > 0 && item.quantity < item.minQuantity) count++;
-    }
-    result.observe(count);
+  inventoryLowStockTotal.addCallback(async result => {
+    try {
+      const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM inventory WHERE quantity > 0 AND quantity < min_quantity');
+      result.observe(rows[0].n);
+    } catch { result.observe(0); }
   });
 
-  inventoryOutOfStockTotal.addCallback(result => {
-    let count = 0;
-    for (const item of store.inventory.values()) {
-      if (item.quantity === 0) count++;
-    }
-    result.observe(count);
+  inventoryOutOfStockTotal.addCallback(async result => {
+    try {
+      const { rows } = await pool.query('SELECT COUNT(*)::int AS n FROM inventory WHERE quantity = 0');
+      result.observe(rows[0].n);
+    } catch { result.observe(0); }
   });
 }
 

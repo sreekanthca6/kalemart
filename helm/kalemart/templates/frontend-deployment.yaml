@@ -9,6 +9,11 @@ metadata:
     app.kubernetes.io/component: frontend
 spec:
   replicas: {{ .Values.frontend.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "kalemart.name" . }}
@@ -20,6 +25,7 @@ spec:
         app.kubernetes.io/component: frontend
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      terminationGracePeriodSeconds: 30
       containers:
         - name: frontend
           image: {{ include "kalemart.image" (dict "global" .Values.global "image" .Values.frontend.image) }}
@@ -34,6 +40,10 @@ spec:
             {{- include "kalemart.otelEnv" (dict "Values" .Values "component" "frontend") | nindent 12 }}
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
           livenessProbe:
             httpGet:
               path: /

@@ -1,35 +1,46 @@
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
-const store = require('../db/store');
+const { randomUUID } = require('crypto');
+const pool = require('../db/pool');
 
 const tracer = trace.getTracer('kalemart-backend');
 
-function list(category) {
-  return tracer.startActiveSpan('product.list', span => {
+async function list(category) {
+  return tracer.startActiveSpan('product.list', async span => {
     try {
-      let items = [...store.products.values()];
+      const params = [];
+      let query = 'SELECT id, name, sku, category, price::float, barcode, organic FROM products';
       if (category) {
-        items = items.filter(p => p.category === category);
+        query += ' WHERE category = $1';
+        params.push(category);
         span.setAttribute('product.filter.category', category);
       }
-      span.setAttribute('product.count', items.length);
-      return items;
+      query += ' ORDER BY id';
+      const { rows } = await pool.query(query, params);
+      span.setAttribute('product.count', rows.length);
+      return rows;
+    } catch (err) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      throw err;
     } finally {
       span.end();
     }
   });
 }
 
-function getById(id) {
-  return tracer.startActiveSpan('product.getById', span => {
+async function getById(id) {
+  return tracer.startActiveSpan('product.getById', async span => {
     span.setAttribute('product.id', id);
     try {
-      const product = store.products.get(id);
-      if (!product) {
+      const { rows } = await pool.query(
+        'SELECT id, name, sku, category, price::float, barcode, organic FROM products WHERE id = $1',
+        [id]
+      );
+      if (!rows.length) {
         const err = new Error(`Product ${id} not found`);
         err.status = 404;
         throw err;
       }
-      return product;
+      return rows[0];
     } catch (err) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
       throw err;
@@ -39,14 +50,19 @@ function getById(id) {
   });
 }
 
-function create(data) {
-  return tracer.startActiveSpan('product.create', span => {
+async function create(data) {
+  return tracer.startActiveSpan('product.create', async span => {
     try {
-      const id = `prod_${store.newId().split('-')[0]}`;
-      const product = { id, ...data, createdAt: new Date() };
-      store.products.set(id, product);
+      const id = `prod_${randomUUID().split('-')[0]}`;
+      const { name, sku, category, price, barcode, organic } = data;
+      const { rows } = await pool.query(
+        `INSERT INTO products (id, name, sku, category, price, barcode, organic)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING id, name, sku, category, price::float, barcode, organic`,
+        [id, name, sku, category, price, barcode || null, organic || false]
+      );
       span.setAttribute('product.id', id);
-      return product;
+      return rows[0];
     } catch (err) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
       throw err;
@@ -56,24 +72,30 @@ function create(data) {
   });
 }
 
-function upsertFromShopify(shopifyProduct) {
-  return tracer.startActiveSpan('product.upsertFromShopify', span => {
+async function upsertFromShopify(shopifyProduct) {
+  return tracer.startActiveSpan('product.upsertFromShopify', async span => {
     span.setAttribute('shopify.product_id', String(shopifyProduct.id));
     try {
       const variant = shopifyProduct.variants?.[0];
       const id = `prod_shopify_${shopifyProduct.id}`;
-      const product = {
-        id,
-        name: shopifyProduct.title,
-        sku: variant?.sku || '',
-        category: shopifyProduct.product_type?.toLowerCase() || 'uncategorised',
-        price: parseFloat(variant?.price || 0),
-        barcode: variant?.barcode || '',
-        shopifyId: shopifyProduct.id,
-        updatedAt: new Date(),
-      };
-      store.products.set(id, product);
-      return product;
+      const { rows } = await pool.query(
+        `INSERT INTO products (id, name, sku, category, price, barcode)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (id) DO UPDATE SET
+           name = EXCLUDED.name, sku = EXCLUDED.sku,
+           category = EXCLUDED.category, price = EXCLUDED.price,
+           barcode = EXCLUDED.barcode
+         RETURNING id, name, sku, category, price::float, barcode, organic`,
+        [
+          id,
+          shopifyProduct.title,
+          variant?.sku || '',
+          shopifyProduct.product_type?.toLowerCase() || 'uncategorised',
+          parseFloat(variant?.price || 0),
+          variant?.barcode || '',
+        ]
+      );
+      return rows[0];
     } catch (err) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
       throw err;

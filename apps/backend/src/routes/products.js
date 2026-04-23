@@ -1,18 +1,18 @@
 const router = require('express').Router();
 const svc = require('../services/productService');
 
-router.get('/', (req, res, next) => {
-  try { res.json(svc.list(req.query.category)); }
+router.get('/', async (req, res, next) => {
+  try { res.json(await svc.list(req.query.category)); }
   catch (e) { next(e); }
 });
 
-router.get('/:id', (req, res, next) => {
-  try { res.json(svc.getById(req.params.id)); }
+router.get('/:id', async (req, res, next) => {
+  try { res.json(await svc.getById(req.params.id)); }
   catch (e) { next(e); }
 });
 
-router.post('/', (req, res, next) => {
-  try { res.status(201).json(svc.create(req.body)); }
+router.post('/', async (req, res, next) => {
+  try { res.status(201).json(await svc.create(req.body)); }
   catch (e) { next(e); }
 });
 

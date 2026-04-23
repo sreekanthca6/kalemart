@@ -1,49 +1,68 @@
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
-const store = require('../db/store');
+const { randomUUID } = require('crypto');
+const pool = require('../db/pool');
 const { inventoryUpdatesTotal } = require('../metrics');
 
 const tracer = trace.getTracer('kalemart-backend');
 
-function list() {
-  return tracer.startActiveSpan('inventory.list', span => {
+const INV_SELECT = `
+  SELECT i.id, i.product_id AS "productId", i.quantity, i.min_quantity AS "minQuantity",
+         i.location, i.expiry_date AS "expiryDate", i.updated_at AS "updatedAt",
+         p.id AS "pId", p.name AS "pName", p.sku AS "pSku", p.category,
+         p.price::float AS "pPrice", p.barcode, p.organic
+  FROM inventory i
+  LEFT JOIN products p ON p.id = i.product_id
+`;
+
+function mapRow(r) {
+  return {
+    id: r.id, productId: r.productId, quantity: r.quantity, minQuantity: r.minQuantity,
+    location: r.location, expiryDate: r.expiryDate, updatedAt: r.updatedAt,
+    product: r.pId ? { id: r.pId, name: r.pName, sku: r.pSku, category: r.category, price: r.pPrice, barcode: r.barcode, organic: r.organic } : null,
+  };
+}
+
+async function list() {
+  return tracer.startActiveSpan('inventory.list', async span => {
     try {
-      const items = [...store.inventory.values()].map(item => ({
-        ...item,
-        product: store.products.get(item.productId) || null,
-      }));
-      span.setAttribute('inventory.count', items.length);
-      return items;
+      const { rows } = await pool.query(INV_SELECT + ' ORDER BY i.id');
+      span.setAttribute('inventory.count', rows.length);
+      return rows.map(mapRow);
+    } catch (err) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      throw err;
     } finally {
       span.end();
     }
   });
 }
 
-function getLowStock() {
-  return tracer.startActiveSpan('inventory.getLowStock', span => {
+async function getLowStock() {
+  return tracer.startActiveSpan('inventory.getLowStock', async span => {
     try {
-      const items = [...store.inventory.values()]
-        .filter(i => i.quantity < i.minQuantity)
-        .map(i => ({ ...i, product: store.products.get(i.productId) || null }));
-      span.setAttribute('inventory.low_stock_count', items.length);
-      return items;
+      const { rows } = await pool.query(INV_SELECT + ' WHERE i.quantity < i.min_quantity ORDER BY i.id');
+      span.setAttribute('inventory.low_stock_count', rows.length);
+      return rows.map(mapRow);
+    } catch (err) {
+      span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
+      throw err;
     } finally {
       span.end();
     }
   });
 }
 
-function getById(id) {
-  return tracer.startActiveSpan('inventory.getById', span => {
+async function getById(id) {
+  return tracer.startActiveSpan('inventory.getById', async span => {
     span.setAttribute('inventory.id', id);
     try {
-      const item = store.inventory.get(id);
-      if (!item) {
+      const { rows } = await pool.query(INV_SELECT + ' WHERE i.id = $1', [id]);
+      if (!rows.length) {
         const err = new Error(`Inventory item ${id} not found`);
         err.status = 404;
         throw err;
       }
-      return { ...item, product: store.products.get(item.productId) || null };
+      return mapRow(rows[0]);
     } catch (err) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
       throw err;
@@ -53,23 +72,30 @@ function getById(id) {
   });
 }
 
-function updateQuantity(id, delta, reason = 'manual') {
-  return tracer.startActiveSpan('inventory.updateQuantity', span => {
+async function updateQuantity(id, delta, reason = 'manual') {
+  return tracer.startActiveSpan('inventory.updateQuantity', async span => {
     span.setAttributes({ 'inventory.id': id, 'inventory.delta': delta, 'inventory.reason': reason });
     try {
-      const item = store.inventory.get(id);
-      if (!item) {
+      const { rows } = await pool.query(
+        `UPDATE inventory
+         SET quantity = GREATEST(0, quantity + $1), updated_at = NOW()
+         WHERE id = $2
+         RETURNING id, product_id AS "productId", quantity, min_quantity AS "minQuantity",
+                   location, expiry_date AS "expiryDate", updated_at AS "updatedAt"`,
+        [delta, id]
+      );
+      if (!rows.length) {
         const err = new Error(`Inventory item ${id} not found`);
         err.status = 404;
         throw err;
       }
-      const prev = item.quantity;
-      item.quantity = Math.max(0, item.quantity + delta);
-      item.updatedAt = new Date();
+      const { rows: pRows } = await pool.query(
+        'SELECT id, name, sku, category, price::float, barcode, organic FROM products WHERE id = $1',
+        [rows[0].productId]
+      );
       inventoryUpdatesTotal.add(1, { reason });
-      span.setAttribute('inventory.quantity_before', prev);
-      span.setAttribute('inventory.quantity_after', item.quantity);
-      return { ...item, product: store.products.get(item.productId) || null };
+      span.setAttribute('inventory.quantity_after', rows[0].quantity);
+      return { ...rows[0], product: pRows[0] || null };
     } catch (err) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
       throw err;
@@ -79,19 +105,29 @@ function updateQuantity(id, delta, reason = 'manual') {
   });
 }
 
-function create(productId, quantity, minQuantity, location) {
-  return tracer.startActiveSpan('inventory.create', span => {
+async function create(productId, quantity, minQuantity, location) {
+  return tracer.startActiveSpan('inventory.create', async span => {
     span.setAttribute('inventory.productId', productId);
     try {
-      if (!store.products.has(productId)) {
+      const { rows: pRows } = await pool.query(
+        'SELECT id, name, sku, category, price::float, barcode, organic FROM products WHERE id = $1',
+        [productId]
+      );
+      if (!pRows.length) {
         const err = new Error(`Product ${productId} not found`);
         err.status = 404;
         throw err;
       }
-      const id = `inv_${store.newId().split('-')[0]}`;
-      const item = { id, productId, quantity, minQuantity, location, updatedAt: new Date() };
-      store.inventory.set(id, item);
-      return { ...item, product: store.products.get(productId) };
+      const id = `inv_${randomUUID().split('-')[0]}`;
+      const { rows } = await pool.query(
+        `INSERT INTO inventory (id, product_id, quantity, min_quantity, location, updated_at)
+         VALUES ($1, $2, $3, $4, $5, NOW())
+         RETURNING id, product_id AS "productId", quantity, min_quantity AS "minQuantity",
+                   location, expiry_date AS "expiryDate", updated_at AS "updatedAt"`,
+        [id, productId, quantity, minQuantity, location]
+      );
+      span.setAttribute('inventory.id', id);
+      return { ...rows[0], product: pRows[0] };
     } catch (err) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });
       throw err;

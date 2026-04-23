@@ -1,26 +1,54 @@
 const router = require('express').Router();
 const { trace, SpanStatusCode } = require('@opentelemetry/api');
-const store = require('../db/store');
+const pool = require('../db/pool');
+const { newId, persistOrder } = require('../db/store');
 const inventorySvc = require('../services/inventoryService');
 const { ordersTotal, orderValueTotal } = require('../metrics');
 
 const tracer = trace.getTracer('kalemart-backend');
 
-router.get('/', (_req, res) => {
-  res.json([...store.orders.values()]);
+router.get('/', async (req, res, next) => {
+  try {
+    const { rows: orderRows } = await pool.query(
+      'SELECT id, total::float, status, created_at AS "createdAt" FROM orders ORDER BY created_at DESC LIMIT 1000'
+    );
+    if (!orderRows.length) return res.json([]);
+    const { rows: itemRows } = await pool.query(
+      `SELECT order_id AS "orderId", inventory_id AS "inventoryId", product_id AS "productId",
+              quantity, unit_price::float AS "unitPrice", line_total::float AS "lineTotal"
+       FROM order_items WHERE order_id = ANY($1)`,
+      [orderRows.map(o => o.id)]
+    );
+    const itemsByOrder = new Map();
+    for (const it of itemRows) {
+      if (!itemsByOrder.has(it.orderId)) itemsByOrder.set(it.orderId, []);
+      itemsByOrder.get(it.orderId).push(it);
+    }
+    res.json(orderRows.map(o => ({ ...o, items: itemsByOrder.get(o.id) || [] })));
+  } catch (e) { next(e); }
 });
 
-router.get('/:id', (req, res, next) => {
-  const order = store.orders.get(req.params.id);
-  if (!order) { const e = new Error('Order not found'); e.status = 404; return next(e); }
-  res.json(order);
+router.get('/:id', async (req, res, next) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT id, total::float, status, created_at AS "createdAt" FROM orders WHERE id = $1',
+      [req.params.id]
+    );
+    if (!rows.length) { const e = new Error('Order not found'); e.status = 404; return next(e); }
+    const { rows: items } = await pool.query(
+      `SELECT inventory_id AS "inventoryId", product_id AS "productId",
+              quantity, unit_price::float AS "unitPrice", line_total::float AS "lineTotal"
+       FROM order_items WHERE order_id = $1`,
+      [req.params.id]
+    );
+    res.json({ ...rows[0], items });
+  } catch (e) { next(e); }
 });
 
-// Create order — deducts inventory for each line item
 router.post('/', async (req, res, next) => {
   const span = tracer.startSpan('order.create');
   try {
-    const { items } = req.body; // [{ inventoryId, quantity }]
+    const { items } = req.body;
     if (!items?.length) {
       const e = new Error('items[] is required'); e.status = 400; throw e;
     }
@@ -29,16 +57,15 @@ router.post('/', async (req, res, next) => {
     const lineItems = [];
 
     for (const { inventoryId, quantity } of items) {
-      const updated = inventorySvc.updateQuantity(inventoryId, -quantity, 'sale');
-      const product = store.products.get(updated.productId);
-      const lineTotal = (product?.price || 0) * quantity;
+      const updated = await inventorySvc.updateQuantity(inventoryId, -quantity, 'sale');
+      const lineTotal = (updated.product?.price || 0) * quantity;
       total += lineTotal;
-      lineItems.push({ inventoryId, productId: updated.productId, quantity, unitPrice: product?.price, lineTotal });
+      lineItems.push({ inventoryId, productId: updated.productId, quantity, unitPrice: updated.product?.price, lineTotal });
     }
 
-    const id = store.newId();
+    const id = newId();
     const order = { id, items: lineItems, total: parseFloat(total.toFixed(2)), status: 'completed', createdAt: new Date() };
-    store.orders.set(id, order);
+    await persistOrder(order);
 
     ordersTotal.add(1);
     orderValueTotal.add(total);
