@@ -110,5 +110,13 @@ export const fetcher = (url) => {
   const token = getToken();
   return fetch(url, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
-  }).then(r => r.json());
+  }).then(r => {
+    if (r.status === 401) {
+      clearToken();
+      if (typeof window !== 'undefined') window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    if (!r.ok) throw new Error(`API error ${r.status}`);
+    return r.json();
+  });
 };
