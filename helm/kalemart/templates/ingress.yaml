@@ -6,8 +6,6 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     {{- include "kalemart.labels" . | nindent 4 }}
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   {{- if .Values.ingress.tls.enabled }}
@@ -27,18 +25,4 @@ spec:
                 name: kalemart-frontend
                 port:
                   number: {{ .Values.frontend.service.port }}
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: kalemart-backend
-                port:
-                  number: {{ .Values.backend.service.port }}
-          - path: /api/insights
-            pathType: Prefix
-            backend:
-              service:
-                name: kalemart-ai-service
-                port:
-                  number: {{ .Values.aiService.service.port }}
 {{- end }}

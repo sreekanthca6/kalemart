@@ -2,7 +2,7 @@ global:
   namespace: kalemart
   imageRegistry: ""
   imagePullPolicy: IfNotPresent
-  otelEndpoint: http://otel-collector.observability:4317
+  otelEndpoint: http://otel-collector-opentelemetry-collector.observability:4317
 
 frontend:
   enabled: true

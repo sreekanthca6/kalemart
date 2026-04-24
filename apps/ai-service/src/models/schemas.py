@@ -10,3 +10,7 @@ class ReorderRequest(BaseModel):
 
 class ComboRequest(BaseModel):
     productIds: list[str]
+
+class SupervisorRequest(BaseModel):
+    inventory: list[dict[str, Any]]
+    context: dict[str, Any] = {}

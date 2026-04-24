@@ -2,6 +2,7 @@ const { trace, SpanStatusCode } = require('@opentelemetry/api');
 const { randomUUID } = require('crypto');
 const { queryAsTenant } = require('../db/tenantQuery');
 const { inventoryUpdatesTotal } = require('../metrics');
+const { logEvent } = require('../observability/log');
 
 const tracer = trace.getTracer('kalemart-backend');
 
@@ -95,6 +96,13 @@ async function updateQuantity(id, delta, reason = 'manual') {
       );
       inventoryUpdatesTotal.add(1, { reason });
       span.setAttribute('inventory.quantity_after', rows[0].quantity);
+      logEvent('inventory_quantity_updated', {
+        inventoryId: id,
+        productId: rows[0].productId,
+        delta,
+        reason,
+        quantityAfter: rows[0].quantity,
+      });
       return { ...rows[0], product: pRows[0] || null };
     } catch (err) {
       span.setStatus({ code: SpanStatusCode.ERROR, message: err.message });

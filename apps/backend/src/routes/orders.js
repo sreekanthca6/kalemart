@@ -4,6 +4,7 @@ const { queryAsTenant } = require('../db/tenantQuery');
 const { newId, persistOrder } = require('../db/store');
 const inventorySvc = require('../services/inventoryService');
 const { ordersTotal, orderValueTotal } = require('../metrics');
+const { logEvent } = require('../observability/log');
 
 const tracer = trace.getTracer('kalemart-backend');
 
@@ -67,6 +68,12 @@ router.post('/', async (req, res, next) => {
     orderValueTotal.add(total);
     span.setAttribute('order.id', id);
     span.setAttribute('order.total', total);
+    logEvent('order_created', {
+      orderId: id,
+      total: order.total,
+      itemCount: lineItems.length,
+      tenantId: req.tenantId,
+    });
     res.status(201).json(order);
   } catch (e) {
     span.setStatus({ code: SpanStatusCode.ERROR, message: e.message });

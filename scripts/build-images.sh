@@ -1,12 +1,18 @@
 #!/bin/bash
-# Build all Kalemart Docker images and push to OrbStack's local registry.
+# Build all Kalemart Docker images for OrbStack's local Docker runtime.
 # Run from the repo root: ./scripts/build-images.sh
 set -euo pipefail
 
-REGISTRY="registry.orbstack.internal/kalemart"
 TAG="${1:-dev}"
+PUSH_REGISTRY="${PUSH_REGISTRY:-}"
 
-echo "🐳 Building Kalemart images → $REGISTRY (tag: $TAG)"
+if [[ -n "$PUSH_REGISTRY" ]]; then
+  IMAGE_PREFIX="$PUSH_REGISTRY/kalemart"
+else
+  IMAGE_PREFIX="kalemart"
+fi
+
+echo "🐳 Building Kalemart images → $IMAGE_PREFIX (tag: $TAG)"
 echo "──────────────────────────────────────────────────────"
 
 services=("backend" "frontend" "worker" "ai-service")
@@ -16,13 +22,15 @@ for svc in "${services[@]}"; do
   echo "▶ $svc"
   docker build \
     --platform linux/arm64 \
-    -t "$REGISTRY/$svc:$TAG" \
+    -t "$IMAGE_PREFIX/$svc:$TAG" \
     "apps/$svc/"
-  echo "  pushing…"
-  docker push "$REGISTRY/$svc:$TAG"
-  echo "  ✓ $REGISTRY/$svc:$TAG"
+  if [[ -n "$PUSH_REGISTRY" ]]; then
+    echo "  pushing…"
+    docker push "$IMAGE_PREFIX/$svc:$TAG"
+  fi
+  echo "  ✓ $IMAGE_PREFIX/$svc:$TAG"
 done
 
 echo ""
-echo "✅  All images pushed. Verify with:"
-echo "    docker images | grep $REGISTRY"
+echo "✅  All images built. Verify with:"
+echo "    docker images | grep $IMAGE_PREFIX"

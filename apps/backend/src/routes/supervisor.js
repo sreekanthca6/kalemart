@@ -5,6 +5,8 @@ const { queryAsTenant } = require('../db/tenantQuery');
 const inventorySvc = require('../services/inventoryService');
 const config = require('../config');
 const aiClient = require('../services/aiClient');
+const { supervisorRecommendationsTotal } = require('../metrics');
+const { logEvent } = require('../observability/log');
 
 const tracer = trace.getTracer('kalemart-backend');
 
@@ -332,6 +334,13 @@ router.post('/analyze', async (req, res, next) => {
       }
 
       span.setAttribute('supervisor.rec_count', recommendations.length);
+      supervisorRecommendationsTotal.add(recommendations.length, { mode });
+      logEvent('supervisor_analysis_completed', {
+        mode,
+        recommendationCount: recommendations.length,
+        skuCount: inventoryPayload.length,
+        tenantId: req.tenantId,
+      });
 
       latestAnalysis = {
         runAt: new Date().toISOString(),

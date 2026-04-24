@@ -1,7 +1,7 @@
 global:
   # imageRegistry and imagePullPolicy are set by deploy-local.sh at deploy time
   # so they are not hardcoded here
-  otelEndpoint: http://otel-collector.observability:4317
+  otelEndpoint: http://otel-collector-opentelemetry-collector.observability:4317
 
 frontend:
   replicaCount: 1

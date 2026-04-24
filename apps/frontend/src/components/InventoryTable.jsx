@@ -58,6 +58,8 @@ const TH = ({ children }) => (
 export default function InventoryTable() {
   const { data, isLoading, mutate } = useSWR('/api/inventory', fetcher, { refreshInterval: 15000 });
   const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('all');
+  const [category, setCategory] = useState('all');
   const [updating, setUpdating] = useState(null);
 
   async function handleAdjust(id, delta) {
@@ -70,38 +72,105 @@ export default function InventoryTable() {
     }
   }
 
-  const rows = (Array.isArray(data) ? data : []).filter(item =>
-    !search || item.product?.name?.toLowerCase().includes(search.toLowerCase())
-  );
+  const allRows = Array.isArray(data) ? data : [];
+  const categories = Array.from(new Set(allRows.map(item => item.product?.category).filter(Boolean))).sort();
+  const rows = allRows.filter(item => {
+    const haystack = [item.product?.name, item.product?.sku, item.product?.barcode, item.location]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    const matchesSearch = !search || haystack.includes(search.toLowerCase());
+    const expired = item.expiryDate && item.quantity > 0 && new Date(item.expiryDate) < new Date();
+    const expiring = item.expiryDate && item.quantity > 0 && !expired && (new Date(item.expiryDate) - Date.now()) / 86400000 <= 5;
+    const matchesStatus =
+      status === 'all' ||
+      (status === 'out' && item.quantity === 0) ||
+      (status === 'low' && item.quantity > 0 && item.quantity < item.minQuantity) ||
+      (status === 'expired' && expired) ||
+      (status === 'expiring' && expiring) ||
+      (status === 'ok' && item.quantity >= item.minQuantity && !expired && !expiring);
+    const matchesCategory = category === 'all' || item.product?.category === category;
+    return matchesSearch && matchesStatus && matchesCategory;
+  });
+
+  const counts = {
+    all: allRows.length,
+    out: allRows.filter(i => i.quantity === 0).length,
+    low: allRows.filter(i => i.quantity > 0 && i.quantity < i.minQuantity).length,
+    expiring: allRows.filter(i => i.expiryDate && i.quantity > 0 && new Date(i.expiryDate) >= new Date() && (new Date(i.expiryDate) - Date.now()) / 86400000 <= 5).length,
+    expired: allRows.filter(i => i.expiryDate && i.quantity > 0 && new Date(i.expiryDate) < new Date()).length,
+  };
 
   return (
     <div>
-      {/* Search */}
-      <div style={{ position: 'relative', marginBottom: 20, maxWidth: 320 }}>
-        <svg style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: 'var(--text-3)' }}
-          fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-        </svg>
-        <input
-          type="search"
-          placeholder="Search products…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
+      {/* Controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+        <div style={{ position: 'relative', width: 340, maxWidth: '100%' }}>
+          <svg style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 14, height: 14, color: 'var(--text-3)' }}
+            fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+          <input
+            type="search"
+            placeholder="Search name, SKU, barcode, location…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            style={{
+              width: '100%',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 10,
+              padding: '9px 14px 9px 36px',
+              fontSize: 13,
+              fontFamily: 'var(--font-body)',
+              color: 'var(--text)',
+              outline: 'none',
+              transition: 'border-color 0.15s',
+            }}
+            onFocus={e => e.target.style.borderColor = 'var(--brand)'}
+            onBlur={e => e.target.style.borderColor = 'var(--border)'}
+          />
+        </div>
+        {[
+          ['all', `All ${counts.all}`],
+          ['out', `Out ${counts.out}`],
+          ['low', `Low ${counts.low}`],
+          ['expiring', `Expiring ${counts.expiring}`],
+          ['expired', `Expired ${counts.expired}`],
+          ['ok', 'OK'],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setStatus(id)}
+            style={{
+              border: '1px solid var(--border)',
+              background: status === id ? 'var(--brand-dim)' : 'var(--surface)',
+              color: status === id ? 'var(--brand)' : 'var(--text-2)',
+              borderRadius: 9,
+              padding: '8px 10px',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 11,
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >{label}</button>
+        ))}
+        <select
+          value={category}
+          onChange={e => setCategory(e.target.value)}
           style={{
-            width: '100%',
+            marginLeft: 'auto',
             background: 'var(--surface)',
             border: '1px solid var(--border)',
-            borderRadius: 10,
-            padding: '9px 14px 9px 36px',
-            fontSize: 13,
-            fontFamily: 'var(--font-body)',
             color: 'var(--text)',
-            outline: 'none',
-            transition: 'border-color 0.15s',
+            borderRadius: 9,
+            padding: '8px 10px',
+            fontSize: 12,
           }}
-          onFocus={e => e.target.style.borderColor = 'var(--brand)'}
-          onBlur={e => e.target.style.borderColor = 'var(--border)'}
-        />
+        >
+          <option value="all">All categories</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
       </div>
 
       {/* Table */}

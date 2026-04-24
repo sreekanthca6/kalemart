@@ -18,6 +18,23 @@ const inventoryUpdatesTotal = meter.createCounter('kalemart_inventory_updates_to
   description: 'Total number of inventory quantity updates',
 });
 
+const httpRequestsTotal = meter.createCounter('kalemart_http_requests_total', {
+  description: 'HTTP requests by method, route, and status class',
+});
+
+const httpRequestDurationMs = meter.createHistogram('kalemart_http_request_duration_ms', {
+  description: 'HTTP request duration in milliseconds',
+  unit: 'ms',
+});
+
+const httpErrorsTotal = meter.createCounter('kalemart_http_errors_total', {
+  description: 'HTTP responses with status >= 500',
+});
+
+const authFailuresTotal = meter.createCounter('kalemart_auth_failures_total', {
+  description: 'Failed or missing authentication attempts',
+});
+
 const ordersTotal = meter.createCounter('kalemart_orders_total', {
   description: 'Total orders created',
   unit: 'orders',
@@ -25,7 +42,15 @@ const ordersTotal = meter.createCounter('kalemart_orders_total', {
 
 const orderValueTotal = meter.createCounter('kalemart_order_value_total', {
   description: 'Total order value processed',
-  unit: 'GBP',
+  unit: 'CAD',
+});
+
+const purchaseOrdersTotal = meter.createCounter('kalemart_purchase_orders_total', {
+  description: 'Purchase orders generated from the restock workflow',
+});
+
+const supervisorRecommendationsTotal = meter.createCounter('kalemart_supervisor_recommendations_total', {
+  description: 'Supervisor recommendations generated',
 });
 
 function registerInventoryObservables(pool) {
@@ -53,7 +78,13 @@ function registerInventoryObservables(pool) {
 
 module.exports = {
   registerInventoryObservables,
+  httpRequestsTotal,
+  httpRequestDurationMs,
+  httpErrorsTotal,
+  authFailuresTotal,
   inventoryUpdatesTotal,
   ordersTotal,
   orderValueTotal,
+  purchaseOrdersTotal,
+  supervisorRecommendationsTotal,
 };

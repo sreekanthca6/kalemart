@@ -31,6 +31,7 @@ app.use('/api/order-basket', require('./routes/orderBasket'));
 app.use('/api/bookkeeping',  require('./routes/bookkeeping'));
 app.use('/api/tax',          require('./routes/tax'));
 app.use('/api/setup',        require('./routes/setup'));
+app.use('/api/ops',          require('./routes/ops'));
 
 app.use(errorHandler);
 

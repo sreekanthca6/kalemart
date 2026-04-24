@@ -2,6 +2,8 @@ const router = require('express').Router();
 const { randomUUID } = require('crypto');
 const { queryAsTenant } = require('../db/tenantQuery');
 const inventorySvc = require('../services/inventoryService');
+const { purchaseOrdersTotal } = require('../metrics');
+const { logEvent } = require('../observability/log');
 
 // KeHE Montreal delivery schedule
 // Deliveries: Thursday + Monday
@@ -178,6 +180,14 @@ KaleMart24 Operations Team
     items: items.map(i => ({ sku: i.product.sku, name: i.product.name, qty: i.suggestedQty, unitCost: i.estCostUnit, total: +(i.suggestedQty * i.estCostUnit).toFixed(2) })),
   };
 
+  purchaseOrdersTotal.add(1, { supplier: 'kehe' });
+  logEvent('purchase_order_generated', {
+    poId: lastPO.id,
+    supplier: 'kehe',
+    itemCount: lastPO.items.length,
+    totalCost,
+    tenantId: req.tenantId,
+  });
   res.json(lastPO);
 });
 

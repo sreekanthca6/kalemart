@@ -104,7 +104,30 @@ export const api = {
   getExpenses:     ()           => request('/bookkeeping/expenses'),
   createExpense:   (data)       => request('/bookkeeping/expenses', { method: 'POST', body: JSON.stringify(data) }),
   getCategories:   ()           => request('/bookkeeping/categories'),
+
+  // Operations
+  getReadiness:    ()           => request('/ops/readiness'),
 };
+
+// Drop-in fetch() replacement that adds auth header and redirects on 401
+export function authFetch(url, options = {}) {
+  const token = getToken();
+  return fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options.headers,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  }).then(r => {
+    if (r.status === 401) {
+      clearToken();
+      if (typeof window !== 'undefined') window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+    return r;
+  });
+}
 
 export const fetcher = (url) => {
   const token = getToken();

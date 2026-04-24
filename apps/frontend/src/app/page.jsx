@@ -222,7 +222,7 @@ export default function Dashboard() {
             fontSize: 13,
             color: 'var(--text-2)',
             marginTop: 6,
-          }}>Here's what's happening at your store today.</p>
+          }}>Here&apos;s what&apos;s happening at your store today.</p>
         </div>
         <LiveClock />
       </div>

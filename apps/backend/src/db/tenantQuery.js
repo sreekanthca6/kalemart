@@ -20,6 +20,8 @@ async function queryAsTenant(text, params) {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE kalemart_app');
     await client.query('SELECT set_config($1, $2, true)', ['app.current_tenant_id', tenantId]);
+    // SSD-appropriate planner cost: index scans are cheap on NVMe/SSD
+    await client.query('SET LOCAL random_page_cost = 1.1');
     const result = await client.query(text, params);
     await client.query('COMMIT');
     return result;
@@ -38,6 +40,7 @@ async function transactAsTenant(fn) {
     await client.query('BEGIN');
     await client.query('SET LOCAL ROLE kalemart_app');
     await client.query('SELECT set_config($1, $2, true)', ['app.current_tenant_id', tenantId]);
+    await client.query('SET LOCAL random_page_cost = 1.1');
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
@@ -49,4 +52,4 @@ async function transactAsTenant(fn) {
   }
 }
 
-module.exports = { runWithTenant, queryAsTenant, transactAsTenant };
+module.exports = { runWithTenant, currentTenantId, queryAsTenant, transactAsTenant };

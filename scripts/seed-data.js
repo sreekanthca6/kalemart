@@ -11,11 +11,22 @@
 const BASE = process.argv.includes('--host')
   ? process.argv[process.argv.indexOf('--host') + 1]
   : 'http://localhost:4000';
+const EMAIL = process.argv.includes('--email')
+  ? process.argv[process.argv.indexOf('--email') + 1]
+  : 'demo@kalemart.local';
+const PASSWORD = process.argv.includes('--password')
+  ? process.argv[process.argv.indexOf('--password') + 1]
+  : 'kalemart-demo';
+
+let token = '';
 
 async function req(method, path, body) {
   const res = await fetch(`${BASE}${path}`, {
     method,
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const data = await res.json();
@@ -24,8 +35,34 @@ async function req(method, path, body) {
 }
 
 async function checkHealth() {
-  const h = await req('GET', '/health');
-  console.log(`✓  Backend healthy — env: ${h.env}`);
+  const res = await fetch(`${BASE}/health`);
+  if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+    const h = await res.json();
+    console.log(`✓  Backend healthy — env: ${h.env}`);
+    return;
+  }
+  const root = await fetch(`${BASE}/`);
+  if (!root.ok) throw new Error(`health → ${root.status}`);
+  console.log('✓  Frontend proxy reachable');
+}
+
+async function login() {
+  for (const prefix of ['/auth', '/api/auth']) {
+    const res = await fetch(`${BASE}${prefix}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+    });
+    const text = await res.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = { error: text.slice(0, 120) }; }
+    if (res.ok && data.token) {
+      token = data.token;
+      console.log(`✓  Logged in as ${EMAIL} — tenant: ${data.tenantId}`);
+      return;
+    }
+  }
+  throw new Error(`login failed for ${EMAIL}`);
 }
 
 async function printInventorySummary() {
@@ -104,6 +141,7 @@ async function main() {
   console.log(`\n🌿 Kalemart Seed Script — ${BASE}\n${'─'.repeat(50)}`);
   try {
     await checkHealth();
+    await login();
     const inventory = await printInventorySummary();
     await seedOrders(inventory);
     await printInventorySummary();   // show updated stock after sales
