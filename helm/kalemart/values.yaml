@@ -119,6 +119,13 @@ postgres:
       memory: 512Mi
 
 secrets:
-  anthropicApiKey: ""
-  postgresPassword: "kalemart_secret_2024"
-  jwtSecret: "dev-jwt-secret-change-in-prod"
+  anthropicApiKey: ""        # set via: helm install ... --set secrets.anthropicApiKey=sk-ant-...
+  postgresPassword: ""       # set via: helm install ... --set secrets.postgresPassword=<strong-password>
+  jwtSecret: ""              # set via: helm install ... --set secrets.jwtSecret=<random-64-char>
+
+sreAgent:
+  enabled: true
+  image:
+    repository: kalemart/sre-agent
+    tag: latest
+  externalUrl: "http://kalemart.local/sre"

@@ -16,7 +16,7 @@ const pool = new Pool({
   port:     parseInt(process.env.PGPORT || '5432'),
   database: process.env.PGDATABASE || 'kalemart',
   user:     process.env.PGUSER     || 'kalemart',
-  password: process.env.PGPASSWORD || 'kalemart_secret_2024',
+  password: process.env.PGPASSWORD,
 });
 
 const DEFAULT_TENANT_ID = process.env.SEED_TENANT_ID || 'tenant_default';

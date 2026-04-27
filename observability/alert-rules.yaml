@@ -1,0 +1,180 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: kalemart-sre-rules
+  namespace: observability
+  labels:
+    app: prometheus
+    release: prometheus
+spec:
+  groups:
+    # ── API Latency ────────────────────────────────────────────────────────────
+    - name: kalemart.latency
+      interval: 30s
+      rules:
+        - alert: APIHighLatency
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le, route) (
+                rate(http_request_duration_seconds_bucket{job="kalemart-backend"}[5m])
+              )
+            ) > 2
+          for: 5m
+          labels:
+            severity: warning
+            team: sre
+            service: backend
+          annotations:
+            summary: "High API latency on {{ $labels.route }}"
+            description: "p99 latency is {{ $value | humanizeDuration }} on route {{ $labels.route }} (threshold: 2s)"
+            runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/api-latency.md"
+
+        - alert: TaxAPIHighLatency
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le) (
+                rate(http_request_duration_seconds_bucket{job="kalemart-backend", route=~"/api/tax.*"}[5m])
+              )
+            ) > 0.5
+          for: 5m
+          labels:
+            severity: critical
+            team: sre
+            service: backend
+            subsystem: tax
+          annotations:
+            summary: "Tax API p99 latency exceeds 500ms"
+            description: "Tax endpoint p99 = {{ $value | humanizeDuration }}. Likely a DB query plan issue."
+            runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/tax-latency.md"
+
+    # ── Error Rate ─────────────────────────────────────────────────────────────
+    - name: kalemart.errors
+      interval: 30s
+      rules:
+        - alert: HighErrorRate
+          expr: |
+            sum by (service) (
+              rate(http_requests_total{job="kalemart-backend", status=~"5.."}[5m])
+            )
+            /
+            sum by (service) (
+              rate(http_requests_total{job="kalemart-backend"}[5m])
+            ) > 0.01
+          for: 5m
+          labels:
+            severity: critical
+            team: sre
+            service: backend
+          annotations:
+            summary: "Error rate above 1% on backend"
+            description: "{{ $value | humanizePercentage }} of requests are 5xx errors"
+            runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/high-error-rate.md"
+
+        - alert: AIServiceErrors
+          expr: |
+            sum(rate(http_requests_total{job="kalemart-ai-service", status=~"5.."}[5m])) > 0.1
+          for: 3m
+          labels:
+            severity: warning
+            team: sre
+            service: ai-service
+          annotations:
+            summary: "AI service returning errors"
+            description: "AI service error rate: {{ $value }} req/s. Check ANTHROPIC_API_KEY."
+
+    # ── Pod Health ─────────────────────────────────────────────────────────────
+    - name: kalemart.pods
+      interval: 30s
+      rules:
+        - alert: PodCrashLooping
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="kalemart"}[15m]) > 3
+          for: 0m
+          labels:
+            severity: critical
+            team: sre
+          annotations:
+            summary: "Pod {{ $labels.pod }} is crash looping"
+            description: "{{ $labels.container }} in pod {{ $labels.pod }} has restarted {{ $value }} times in 15m"
+            runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/pod-crashloop.md"
+
+        - alert: PodNotReady
+          expr: |
+            kube_pod_status_ready{namespace="kalemart", condition="true"} == 0
+          for: 5m
+          labels:
+            severity: warning
+            team: sre
+          annotations:
+            summary: "Pod {{ $labels.pod }} not ready for 5 minutes"
+            description: "Pod {{ $labels.pod }} has been unready since {{ $value }}"
+
+    # ── Database ───────────────────────────────────────────────────────────────
+    - name: kalemart.database
+      interval: 30s
+      rules:
+        - alert: PostgresDown
+          expr: |
+            up{job="kalemart-backend"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: sre
+            service: postgres
+          annotations:
+            summary: "Backend is unreachable — possible Postgres failure"
+            description: "Backend scrape target is down. May indicate DB connection failure."
+
+        - alert: SlowDBQueries
+          expr: |
+            histogram_quantile(0.95,
+              sum by (le) (
+                rate(db_query_duration_seconds_bucket{job="kalemart-backend"}[5m])
+              )
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+            team: sre
+            service: postgres
+          annotations:
+            summary: "Slow DB queries detected (p95 > 1s)"
+            description: "DB query p95 = {{ $value | humanizeDuration }}. Check for missing indexes or lock contention."
+
+    # ── SLO Burn Rate ──────────────────────────────────────────────────────────
+    - name: kalemart.slo
+      interval: 30s
+      rules:
+        # Fast burn: consuming monthly error budget 10x in 1h window
+        - alert: SLOErrorBudgetFastBurn
+          expr: |
+            (
+              sum(rate(http_requests_total{job="kalemart-backend", status=~"5.."}[1h]))
+              /
+              sum(rate(http_requests_total{job="kalemart-backend"}[1h]))
+            ) > (10 * 0.005)
+          for: 5m
+          labels:
+            severity: critical
+            team: sre
+            slo: availability
+          annotations:
+            summary: "SLO fast burn — error budget burning at 10x rate"
+            description: "Burning error budget 10x faster than sustainable. Current error rate: {{ $value | humanizePercentage }}"
+
+        # Slow burn: consuming monthly error budget 2x in 6h window
+        - alert: SLOErrorBudgetSlowBurn
+          expr: |
+            (
+              sum(rate(http_requests_total{job="kalemart-backend", status=~"5.."}[6h]))
+              /
+              sum(rate(http_requests_total{job="kalemart-backend"}[6h]))
+            ) > (2 * 0.005)
+          for: 15m
+          labels:
+            severity: warning
+            team: sre
+            slo: availability
+          annotations:
+            summary: "SLO slow burn — error budget at risk"
+            description: "Burning error budget 2x faster than sustainable over 6h. Current error rate: {{ $value | humanizePercentage }}"

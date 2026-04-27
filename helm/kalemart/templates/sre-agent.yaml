@@ -1,0 +1,111 @@
+{{- if .Values.sreAgent.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kalemart-sre-agent
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    app: kalemart-sre-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kalemart-sre-agent
+  template:
+    metadata:
+      labels:
+        app: kalemart-sre-agent
+    spec:
+      serviceAccountName: sre-agent
+      containers:
+        - name: sre-agent
+          image: {{ .Values.sreAgent.image.repository }}:{{ .Values.sreAgent.image.tag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ANTHROPIC_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: kalemart-secrets
+                  key: anthropic-api-key
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kalemart-secrets
+                  key: slack-webhook-url
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: kalemart-secrets
+                  key: database-url
+            - name: PROMETHEUS_URL
+              value: "http://prometheus-server.observability.svc.cluster.local:80"
+            - name: K8S_NAMESPACE
+              value: {{ .Values.global.namespace }}
+            - name: AGENT_EXTERNAL_URL
+              value: {{ .Values.sreAgent.externalUrl }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kalemart-sre-agent
+  namespace: {{ .Values.global.namespace }}
+spec:
+  selector:
+    app: kalemart-sre-agent
+  ports:
+    - port: 8080
+      targetPort: 8080
+---
+# RBAC — SRE agent needs to read pods/logs and restart deployments
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: sre-agent
+  namespace: {{ .Values.global.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: sre-agent
+  namespace: {{ .Values.global.namespace }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "pods/log", "events"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/status"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: sre-agent
+  namespace: {{ .Values.global.namespace }}
+subjects:
+  - kind: ServiceAccount
+    name: sre-agent
+    namespace: {{ .Values.global.namespace }}
+roleRef:
+  kind: Role
+  name: sre-agent
+  apiGroup: rbac.authorization.k8s.io
+{{- end }}

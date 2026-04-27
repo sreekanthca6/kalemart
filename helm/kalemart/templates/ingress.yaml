@@ -18,6 +18,20 @@ spec:
     - host: {{ .Values.ingress.host }}
       http:
         paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: kalemart-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+          - path: /sre
+            pathType: Prefix
+            backend:
+              service:
+                name: kalemart-sre-agent
+                port:
+                  number: 8080
           - path: /
             pathType: Prefix
             backend:
