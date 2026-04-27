@@ -1,5 +1,7 @@
 # KaleMart24 — Multi-Tenant Grocery Management Platform
 
+**🌐 Live demo: [kalemart.sreekanthp.com](https://kalemart.sreekanthp.com)**
+
 A production-grade, multi-tenant SaaS platform for grocery store chains — built to demonstrate full-stack engineering, Kubernetes operations, observability, and autonomous SRE practices.
 
 ## Architecture
