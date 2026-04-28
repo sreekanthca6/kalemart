@@ -9,7 +9,7 @@ frontend:
   enabled: true
   image:
     repository: kalemart/frontend
-    tag: sha-cda0937
+    tag: sha-c54deb3
   replicaCount: 1
   service:
     type: ClusterIP
@@ -32,7 +32,7 @@ backend:
   enabled: true
   image:
     repository: kalemart/backend
-    tag: sha-cda0937
+    tag: sha-c54deb3
   replicaCount: 1
   service:
     type: ClusterIP
@@ -60,7 +60,7 @@ worker:
   enabled: true
   image:
     repository: kalemart/worker
-    tag: sha-cda0937
+    tag: sha-c54deb3
   replicaCount: 1
   env:
     NODE_ENV: production
@@ -75,7 +75,7 @@ aiService:
   enabled: true
   image:
     repository: kalemart/ai-service
-    tag: sha-cda0937
+    tag: sha-c54deb3
   replicaCount: 1
   service:
     type: ClusterIP
@@ -122,5 +122,5 @@ sreAgent:
   enabled: true
   image:
     repository: kalemart/sre-agent
-    tag: sha-cda0937
+    tag: sha-c54deb3
   externalUrl: "http://kalemart.local/sre"
