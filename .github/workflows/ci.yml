@@ -1,0 +1,118 @@
+name: CI — Build & Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/**
+
+# One CI run at a time per branch — don't queue up stale builds
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # push to GHCR
+
+    strategy:
+      matrix:
+        include:
+          - service: frontend
+            context: apps/frontend
+            image: kalemart/frontend
+          - service: backend
+            context: apps/backend
+            image: kalemart/backend
+          - service: worker
+            context: apps/worker
+            image: kalemart/worker
+          - service: ai-service
+            context: apps/ai-service
+            image: kalemart/ai-service
+          - service: sre-agent
+            context: apps/sre-agent
+            image: kalemart/sre-agent
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # GITHUB_TOKEN is auto-provided — no extra secrets needed for GHCR
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Enables multi-platform builds and layer caching
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Generates tags:  sha-abc1234  and  latest
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/sreekanthca6/${{ matrix.image }}
+          tags: |
+            type=sha,format=short
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          # Layer cache stored in GitHub Actions cache — speeds up rebuilds
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  # Runs after ALL matrix jobs succeed
+  update-helm-values:
+    name: Update image tags → trigger Argo CD sync
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # push updated values.yaml back to repo
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Use GITHUB_TOKEN with write permission so we can push back
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install yq
+        run: |
+          wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          chmod +x /usr/local/bin/yq
+
+      # docker/metadata-action produces tags like "sha-abc1234"
+      - name: Compute image tag
+        id: tag
+        run: echo "value=sha-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Update values.yaml with new image tags
+        run: |
+          TAG="${{ steps.tag.outputs.value }}"
+          yq -i ".frontend.image.tag  = \"$TAG\"" helm/kalemart/values.yaml
+          yq -i ".backend.image.tag   = \"$TAG\"" helm/kalemart/values.yaml
+          yq -i ".worker.image.tag    = \"$TAG\"" helm/kalemart/values.yaml
+          yq -i ".aiService.image.tag = \"$TAG\"" helm/kalemart/values.yaml
+          yq -i ".sreAgent.image.tag  = \"$TAG\"" helm/kalemart/values.yaml
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add helm/kalemart/values.yaml
+          git commit -m "ci: bump image tags to ${{ steps.tag.outputs.value }} [skip ci]"
+          git push
