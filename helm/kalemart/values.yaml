@@ -114,9 +114,10 @@ postgres:
       cpu: 500m
       memory: 512Mi
 secrets:
-  anthropicApiKey: "" # set via: helm install ... --set secrets.anthropicApiKey=sk-ant-...
-  postgresPassword: "" # set via: helm install ... --set secrets.postgresPassword=<strong-password>
-  jwtSecret: "" # set via: helm install ... --set secrets.jwtSecret=<random-64-char>
+  anthropicApiKey: ""
+  postgresPassword: ""
+  jwtSecret: ""
+  slackWebhookUrl: ""
 sreAgent:
   enabled: true
   image:
