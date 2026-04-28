@@ -3,12 +3,11 @@ global:
   imageRegistry: ""
   imagePullPolicy: IfNotPresent
   otelEndpoint: http://otel-collector-opentelemetry-collector.observability:4317
-
 frontend:
   enabled: true
   image:
     repository: kalemart/frontend
-    tag: latest
+    tag: sha-cda0937
   replicaCount: 1
   service:
     type: ClusterIP
@@ -27,12 +26,11 @@ frontend:
     minReplicas: 1
     maxReplicas: 5
     targetCPUUtilizationPercentage: 70
-
 backend:
   enabled: true
   image:
     repository: kalemart/backend
-    tag: latest
+    tag: sha-cda0937
   replicaCount: 1
   service:
     type: ClusterIP
@@ -56,12 +54,11 @@ backend:
     minReplicas: 1
     maxReplicas: 5
     targetCPUUtilizationPercentage: 70
-
 worker:
   enabled: true
   image:
     repository: kalemart/worker
-    tag: latest
+    tag: sha-cda0937
   replicaCount: 1
   env:
     NODE_ENV: production
@@ -72,12 +69,11 @@ worker:
     limits:
       cpu: 250m
       memory: 256Mi
-
 aiService:
   enabled: true
   image:
     repository: kalemart/ai-service
-    tag: latest
+    tag: sha-cda0937
   replicaCount: 1
   service:
     type: ClusterIP
@@ -96,7 +92,6 @@ aiService:
     minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 80
-
 ingress:
   enabled: true
   className: nginx
@@ -104,7 +99,6 @@ ingress:
   tls:
     enabled: false
     secretName: kalemart-tls
-
 postgres:
   enabled: true
   database: kalemart
@@ -117,15 +111,13 @@ postgres:
     limits:
       cpu: 500m
       memory: 512Mi
-
 secrets:
-  anthropicApiKey: ""        # set via: helm install ... --set secrets.anthropicApiKey=sk-ant-...
-  postgresPassword: ""       # set via: helm install ... --set secrets.postgresPassword=<strong-password>
-  jwtSecret: ""              # set via: helm install ... --set secrets.jwtSecret=<random-64-char>
-
+  anthropicApiKey: "" # set via: helm install ... --set secrets.anthropicApiKey=sk-ant-...
+  postgresPassword: "" # set via: helm install ... --set secrets.postgresPassword=<strong-password>
+  jwtSecret: "" # set via: helm install ... --set secrets.jwtSecret=<random-64-char>
 sreAgent:
   enabled: true
   image:
     repository: kalemart/sre-agent
-    tag: latest
+    tag: sha-cda0937
   externalUrl: "http://kalemart.local/sre"
