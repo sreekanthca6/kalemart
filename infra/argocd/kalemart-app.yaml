@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kalemart
+  namespace: argocd
+  # When the Application is deleted, also delete all managed resources
+  finalizers:
+    - resources-finalizer.argocd.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/sreekanthca6/kalemart.git
+    targetRevision: main
+    path: helm/kalemart
+    helm:
+      # Layer prod overrides on top of base values
+      valueFiles:
+        - values.yaml
+        - values.prod.yaml
+      # Non-secret overrides — safe to store in Git
+      parameters:
+        - name: ingress.host
+          value: kalemart.sreekanthp.com
+        - name: ingress.tls.enabled
+          value: "false"
+
+  destination:
+    # kubernetes.default.svc = the cluster Argo CD itself runs in
+    server: https://kubernetes.default.svc
+    namespace: kalemart
+
+  syncPolicy:
+    automated:
+      prune: true      # delete resources removed from Git
+      selfHeal: true   # revert manual cluster changes back to Git state
+    syncOptions:
+      - CreateNamespace=true
