@@ -1,0 +1,97 @@
+name: Terraform
+
+on:
+  push:
+    branches: [main]
+    paths: [infra/terraform/**]
+  pull_request:
+    paths: [infra/terraform/**]
+
+# Only one Terraform run at a time — prevents state conflicts
+concurrency:
+  group: terraform
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: write       # post plan as PR comment
+  id-token: write            # needed for Workload Identity Federation
+
+env:
+  TF_VERSION: "1.9.8"
+  WORKING_DIR: infra/terraform
+
+jobs:
+  terraform:
+    name: ${{ github.event_name == 'pull_request' && 'Plan' || 'Apply' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Keyless GCP auth — no secrets stored, uses OIDC token from GitHub
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: projects/1034455127668/locations/global/workloadIdentityPools/github-actions/providers/github
+          service_account: terraform-sa@project-305939f8-def0-4db0-b42.iam.gserviceaccount.com
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Terraform Init
+        id: init
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform init
+
+      - name: Terraform Validate
+        id: validate
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform plan -no-color -out=tfplan
+        continue-on-error: true  # don't fail here — we post the result first
+
+      # Post plan output as a comment on the PR
+      - name: Post Plan to PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const output = `### Terraform Plan
+            **Init:** \`${{ steps.init.outcome }}\`
+            **Validate:** \`${{ steps.validate.outcome }}\`
+            **Plan:** \`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`
+            ${{ steps.plan.outputs.stdout }}
+            \`\`\`
+            </details>
+
+            *Pushed by @${{ github.actor }}, Action: \`${{ github.event_name }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            });
+
+      # Fail the job if plan failed (after posting comment)
+      - name: Check Plan Status
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
+
+      # Apply only on merge to main — not on PRs
+      - name: Terraform Apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform apply -auto-approve tfplan
