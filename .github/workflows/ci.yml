@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - apps/**
+  workflow_dispatch:
 
 # One CI run at a time per branch — don't queue up stale builds
 concurrency:
