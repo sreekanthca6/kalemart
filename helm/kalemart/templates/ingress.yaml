@@ -1,6 +1,30 @@
 {{- if .Values.ingress.enabled }}
-# API ingress — strips /api prefix before forwarding to backend
-# e.g. /api/auth/login → /auth/login, /api/products → /products
+# Auth ingress — rewrites /api/auth/* → /auth/* because backend mounts auth at /auth, not /api/auth
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kalemart-api-auth
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "kalemart.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /auth/$2
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /api/auth(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: kalemart-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+---
+# All other /api/* routes — passed through unchanged (backend mounts them at /api/*)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -8,24 +32,21 @@ metadata:
   namespace: {{ .Values.global.namespace }}
   labels:
     {{- include "kalemart.labels" . | nindent 4 }}
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   rules:
     - host: {{ .Values.ingress.host }}
       http:
         paths:
-          - path: /api(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /api
+            pathType: Prefix
             backend:
               service:
                 name: kalemart-backend
                 port:
                   number: {{ .Values.backend.service.port }}
-          - path: /sre(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /sre
+            pathType: Prefix
             backend:
               service:
                 name: kalemart-sre-agent
