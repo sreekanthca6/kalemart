@@ -9,7 +9,8 @@
       sh -s - server \
         --disable traefik \
         --flannel-backend vxlan \
-        --node-ip {{ ansible_default_ipv4.address }}
+        --node-ip {{ ansible_default_ipv4.address }} \
+        --tls-san {{ ansible_host }}
   args:
     # 'creates' makes this idempotent — skips if k3s is already installed
     creates: /usr/local/bin/k3s
@@ -55,5 +56,5 @@
   delegate_to: localhost
   replace:
     path: ~/.kube/kalemart-k3s.yaml
-    regexp: 'https://127\.0\.0\.1:6443'
+    regexp: 'https://[^:]+:6443'
     replace: "https://{{ ansible_host }}:6443"
