@@ -6,6 +6,7 @@ on:
     paths: [infra/terraform/**]
   pull_request:
     paths: [infra/terraform/**]
+  workflow_dispatch:
 
 # Only one Terraform run at a time — prevents state conflicts
 concurrency:
