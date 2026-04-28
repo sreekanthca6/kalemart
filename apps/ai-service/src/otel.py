@@ -10,13 +10,18 @@ from opentelemetry.sdk.resources import Resource
 import os
 
 def setup_otel():
+    if os.getenv("OTEL_SDK_DISABLED", "false").lower() == "true":
+        return
+    endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317")
+    if not endpoint:
+        return
     resource = Resource.create({
         "service.name": "kalemart-ai-service",
         "service.version": os.getenv("APP_VERSION", "0.0.1"),
     })
     provider = TracerProvider(resource=resource)
     exporter = OTLPSpanExporter(
-        endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317"),
+        endpoint=endpoint,
         insecure=True,
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))
@@ -24,7 +29,7 @@ def setup_otel():
 
     metric_reader = PeriodicExportingMetricReader(
         OTLPMetricExporter(
-            endpoint=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector:4317"),
+            endpoint=endpoint,
             insecure=True,
         ),
         export_interval_millis=10000,

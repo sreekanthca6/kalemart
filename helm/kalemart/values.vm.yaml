@@ -1,0 +1,55 @@
+# VM deployment overrides (k3s on Rocky Linux, x86_64)
+# Images come from GHCR — CI builds and pushes on every main merge.
+# CI pushes to ghcr.io/sreekanthca6/<service>:latest (no "kalemart/" prefix)
+
+global:
+  imageRegistry: ghcr.io/sreekanthca6
+  imagePullPolicy: Always
+  otelEndpoint: ""   # no observability stack on VM
+
+frontend:
+  image:
+    repository: frontend
+    tag: latest
+  env:
+    HOSTNAME: "0.0.0.0"
+    OTEL_SDK_DISABLED: "true"
+
+backend:
+  image:
+    repository: backend
+    tag: latest
+  env:
+    NODE_ENV: production
+    PORT: "4000"
+    PGHOST: "kalemart-postgres"
+    PGPORT: "5432"
+    PGDATABASE: "kalemart"
+    PGUSER: "kalemart"
+    OTEL_SDK_DISABLED: "true"
+
+worker:
+  image:
+    repository: worker
+    tag: latest
+  env:
+    NODE_ENV: production
+    OTEL_SDK_DISABLED: "true"
+
+aiService:
+  image:
+    repository: ai-service
+    tag: latest
+  env:
+    APP_VERSION: "0.0.1"
+    OTEL_SDK_DISABLED: "true"
+
+sreAgent:
+  enabled: false   # no external URL configured on VM
+
+ingress:
+  enabled: true
+  className: nginx
+  host: kalemart.local
+  tls:
+    enabled: false
