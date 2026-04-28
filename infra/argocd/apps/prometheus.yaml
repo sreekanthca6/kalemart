@@ -1,0 +1,76 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.io
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: "84.3.0"
+    helm:
+      # ServerSideApply required — CRD annotations exceed 262144 bytes otherwise
+      values: |
+        prometheus:
+          prometheusSpec:
+            retention: 7d
+            resources:
+              requests:
+                memory: 256Mi
+              limits:
+                memory: 512Mi
+        alertmanager:
+          enabled: true
+          config:
+            global: {}   # slack_api_url patched by Ansible (not stored in Git)
+            route:
+              receiver: slack
+              routes:
+                - match:
+                    alertname: Watchdog
+                  receiver: null-receiver
+            receivers:
+              - name: slack
+                slack_configs:
+                  - channel: '#kalemart-alerts'
+                    title: '{{ template "slack.default.title" . }}'
+                    text: '{{ range .Alerts }}{{ .Annotations.summary }}{{ end }}'
+              - name: null-receiver
+        grafana:
+          # adminPassword patched by Ansible (not stored in Git)
+          service:
+            type: NodePort
+            nodePort: 30300
+          persistence:
+            enabled: true
+            size: 1Gi
+          initChownData:
+            enabled: false
+          # Manage datasources here — prevents conflict with loki-stack's configmap
+          sidecar:
+            datasources:
+              enabled: false
+          additionalDataSources:
+            - name: Loki
+              type: loki
+              url: http://loki.observability.svc.cluster.local:3100
+              access: proxy
+              isDefault: false
+            - name: Tempo
+              type: tempo
+              url: http://tempo.observability.svc.cluster.local:3100
+              access: proxy
+              isDefault: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true

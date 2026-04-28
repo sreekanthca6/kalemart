@@ -1,0 +1,125 @@
+---
+# Bootstraps all cluster addons on a fresh k3s install.
+# Runs on the server node after k3s-server and k3s-agent roles complete.
+# Required vars (passed via env in CI, or --extra-vars locally):
+#   ghcr_token, postgres_password, jwt_secret, anthropic_api_key,
+#   slack_webhook_url, cloudflare_tunnel_credentials, grafana_admin_password
+
+# ── nginx-ingress ─────────────────────────────────────────────────────────────
+
+- name: Install nginx-ingress controller
+  shell: >
+    k3s kubectl apply -f
+    https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.3/deploy/static/provider/cloud/deploy.yaml
+  become: yes
+  changed_when: false
+
+- name: Wait for nginx-ingress to be ready
+  shell: k3s kubectl rollout status deployment/ingress-nginx-controller -n ingress-nginx --timeout=120s
+  become: yes
+  retries: 3
+  delay: 10
+
+# ── Argo CD ───────────────────────────────────────────────────────────────────
+
+- name: Create argocd namespace
+  shell: k3s kubectl create namespace argocd --dry-run=client -o yaml | k3s kubectl apply -f -
+  become: yes
+  changed_when: false
+
+- name: Install Argo CD
+  shell: >
+    k3s kubectl apply -n argocd -f
+    https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+  become: yes
+  changed_when: false
+
+- name: Wait for Argo CD server to be ready
+  shell: k3s kubectl rollout status deployment/argocd-server -n argocd --timeout=180s
+  become: yes
+  retries: 3
+  delay: 15
+
+- name: Expose Argo CD on NodePort 30080
+  shell: |
+    k3s kubectl patch svc argocd-server -n argocd -p \
+      '{"spec":{"type":"NodePort","ports":[
+        {"port":443,"targetPort":8080,"nodePort":30443,"name":"https"},
+        {"port":80,"targetPort":8080,"nodePort":30080,"name":"http"}
+      ]}}'
+  become: yes
+  changed_when: false
+
+# ── Namespaces ────────────────────────────────────────────────────────────────
+
+- name: Create application namespaces
+  shell: k3s kubectl create namespace {{ item }} --dry-run=client -o yaml | k3s kubectl apply -f -
+  loop:
+    - kalemart
+    - observability
+    - cloudflared
+  become: yes
+  changed_when: false
+
+# ── Secrets (not stored in Git) ───────────────────────────────────────────────
+
+- name: Create GHCR image pull secret (kalemart namespace)
+  shell: |
+    k3s kubectl create secret docker-registry ghcr-pull-secret \
+      --namespace=kalemart \
+      --docker-server=ghcr.io \
+      --docker-username=sreekanthca6 \
+      --docker-password={{ ghcr_token }} \
+      --docker-email=sreekanthca6@gmail.com \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  become: yes
+  changed_when: false
+
+- name: Create Cloudflare tunnel credentials secret (cloudflared namespace)
+  shell: |
+    k3s kubectl create secret generic tunnel-credentials \
+      --namespace=cloudflared \
+      --from-literal=credentials.json='{{ cloudflare_tunnel_credentials }}' \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  become: yes
+  changed_when: false
+
+# ── Apply Argo CD Applications ────────────────────────────────────────────────
+
+- name: Copy Application manifests to server
+  copy:
+    src: "{{ playbook_dir }}/../argocd/apps/"
+    dest: /tmp/argocd-apps/
+    mode: "0644"
+
+- name: Apply all Argo CD Applications
+  shell: k3s kubectl apply -f /tmp/argocd-apps/
+  become: yes
+  changed_when: false
+
+# ── Patch Applications with secret values ─────────────────────────────────────
+# These are stored encrypted in argocd-secret (never in Git)
+
+- name: Patch kalemart Application with secrets
+  shell: |
+    k3s kubectl patch application kalemart -n argocd --type=merge -p '{
+      "spec":{"source":{"helm":{"parameters":[
+        {"name":"ingress.host","value":"kalemart.sreekanthp.com"},
+        {"name":"ingress.tls.enabled","value":"false"},
+        {"name":"secrets.postgresPassword","value":"{{ postgres_password }}"},
+        {"name":"secrets.jwtSecret","value":"{{ jwt_secret }}"},
+        {"name":"secrets.anthropicApiKey","value":"{{ anthropic_api_key }}"},
+        {"name":"secrets.slackWebhookUrl","value":"{{ slack_webhook_url }}"}
+      ]}}}'
+  become: yes
+  changed_when: false
+
+- name: Patch prometheus Application with Grafana password and Alertmanager Slack URL
+  shell: |
+    k3s kubectl patch application kube-prometheus -n argocd --type=merge -p '{
+      "spec":{"source":{"helm":{"parameters":[
+        {"name":"grafana.adminPassword","value":"{{ grafana_admin_password }}"},
+        {"name":"alertmanager.config.global.slack_api_url","value":"{{ slack_webhook_url }}"}
+      ]}}}'
+  become: yes
+  changed_when: false

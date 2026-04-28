@@ -24,3 +24,20 @@
   gather_facts: yes
   roles:
     - k3s-agent
+
+- name: Bootstrap cluster addons
+  hosts: k3s_server
+  gather_facts: no
+  # Secrets are read from environment variables — never hardcoded here.
+  # In CI: set as GitHub Actions secrets and passed via env in ansible.yml.
+  # Locally: export the vars before running ansible-playbook.
+  vars:
+    ghcr_token:                    "{{ lookup('env', 'GHCR_TOKEN') }}"
+    postgres_password:             "{{ lookup('env', 'POSTGRES_PASSWORD') }}"
+    jwt_secret:                    "{{ lookup('env', 'JWT_SECRET') }}"
+    anthropic_api_key:             "{{ lookup('env', 'ANTHROPIC_API_KEY') }}"
+    slack_webhook_url:             "{{ lookup('env', 'SLACK_WEBHOOK_URL') }}"
+    cloudflare_tunnel_credentials: "{{ lookup('env', 'CLOUDFLARE_TUNNEL_CREDENTIALS') }}"
+    grafana_admin_password:        "{{ lookup('env', 'GRAFANA_ADMIN_PASSWORD') | default('kalemart123') }}"
+  roles:
+    - bootstrap

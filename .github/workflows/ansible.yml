@@ -86,6 +86,14 @@ jobs:
       - name: Run site.yml
         working-directory: infra/ansible
         run: ansible-playbook -i inventory.ini site.yml --diff -v
+        env:
+          GHCR_TOKEN:                    ${{ secrets.GHCR_TOKEN }}
+          POSTGRES_PASSWORD:             ${{ secrets.POSTGRES_PASSWORD }}
+          JWT_SECRET:                    ${{ secrets.JWT_SECRET }}
+          ANTHROPIC_API_KEY:             ${{ secrets.ANTHROPIC_API_KEY }}
+          SLACK_WEBHOOK_URL:             ${{ secrets.SLACK_WEBHOOK_URL }}
+          CLOUDFLARE_TUNNEL_CREDENTIALS: ${{ secrets.CLOUDFLARE_TUNNEL_CREDENTIALS }}
+          GRAFANA_ADMIN_PASSWORD:        ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
 
       - name: Upload kubeconfig
         uses: actions/upload-artifact@v4
