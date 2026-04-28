@@ -1,0 +1,59 @@
+---
+# Installs k3s on the control plane node.
+# After this role runs, the cluster exists and is ready for agents to join.
+
+- name: Install k3s server
+  shell: |
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      sh -s - server \
+        --disable traefik \
+        --flannel-backend vxlan \
+        --node-ip {{ ansible_default_ipv4.address }}
+  args:
+    # 'creates' makes this idempotent — skips if k3s is already installed
+    creates: /usr/local/bin/k3s
+  become: yes
+
+- name: Wait for k3s API server to be ready
+  wait_for:
+    host: "{{ ansible_default_ipv4.address }}"
+    port: 6443
+    timeout: 120
+
+- name: Wait for node to be in Ready state
+  shell: k3s kubectl get node {{ ansible_hostname }} -o jsonpath='{.status.conditions[-1].type}'
+  register: node_status
+  until: node_status.stdout == "Ready"
+  retries: 20
+  delay: 10
+  become: yes
+
+# The node token is what agents use to authenticate and join the cluster.
+# We read it here and store it as a host fact so the agent role can access it.
+- name: Read k3s node token
+  slurp:
+    src: /var/lib/rancher/k3s/server/node-token
+  register: k3s_token_raw
+  become: yes
+
+- name: Set k3s_node_token fact (accessible to agent role via hostvars)
+  set_fact:
+    k3s_node_token: "{{ k3s_token_raw.content | b64decode | trim }}"
+    cacheable: yes
+
+# Fetch kubeconfig to local machine so you can run kubectl from your laptop
+- name: Fetch kubeconfig
+  fetch:
+    src: /etc/rancher/k3s/k3s.yaml
+    dest: ~/.kube/kalemart-k3s.yaml
+    flat: yes
+  become: yes
+
+# The fetched kubeconfig has 127.0.0.1 as server — replace with real IP
+- name: Fix kubeconfig server address
+  delegate_to: localhost
+  replace:
+    path: ~/.kube/kalemart-k3s.yaml
+    regexp: 'https://127\.0\.0\.1:6443'
+    replace: "https://{{ ansible_host }}:6443"

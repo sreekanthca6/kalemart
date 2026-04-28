@@ -2,10 +2,10 @@
 # Regenerate with: terraform apply (triggers local_file resource)
 
 [k3s_server]
-${server_ip} ansible_user=${ssh_user} ansible_ssh_private_key_file=~/.ssh/google_compute_engine
+${server_ip} ansible_user=ansible ansible_ssh_private_key_file=~/.ssh/ansible_ed25519
 
 [k3s_agent]
-${agent_ip} ansible_user=${ssh_user} ansible_ssh_private_key_file=~/.ssh/google_compute_engine
+${agent_ip} ansible_user=ansible ansible_ssh_private_key_file=~/.ssh/ansible_ed25519
 
 [k3s_cluster:children]
 k3s_server

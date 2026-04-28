@@ -1,0 +1,69 @@
+---
+# Runs on EVERY node before k3s is installed.
+# Sets the baseline OS state Kubernetes requires.
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: yes
+
+- name: Install required packages
+  apt:
+    name:
+      - curl
+      - wget
+      - git
+      - jq
+      - unzip
+      - ca-certificates
+      - apt-transport-https
+    state: present
+  become: yes
+
+# Kubernetes will refuse to start if swap is on —
+# it affects how the scheduler predicts memory availability.
+- name: Disable swap now
+  command: swapoff -a
+  when: ansible_swaptotal_mb > 0
+  become: yes
+
+- name: Remove swap from /etc/fstab (survives reboots)
+  lineinfile:
+    path: /etc/fstab
+    regexp: '.*swap.*'
+    state: absent
+  become: yes
+
+# br_netfilter: lets iptables see bridged traffic (required for pod networking)
+# overlay:      used by the container runtime for layered filesystems
+- name: Load kernel modules
+  modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - br_netfilter
+    - overlay
+  become: yes
+
+- name: Persist kernel modules across reboots
+  copy:
+    dest: /etc/modules-load.d/k3s.conf
+    content: |
+      br_netfilter
+      overlay
+  become: yes
+
+# These sysctls let pods talk to each other across nodes
+- name: Set sysctl settings for k3s networking
+  sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_set: yes
+    reload: yes
+  loop:
+    - { key: net.bridge.bridge-nf-call-iptables,  value: "1" }
+    - { key: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+    - { key: net.ipv4.ip_forward,                 value: "1" }
+  become: yes

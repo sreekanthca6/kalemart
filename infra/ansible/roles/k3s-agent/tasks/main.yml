@@ -1,0 +1,24 @@
+---
+# Installs k3s on the worker node and joins it to the cluster.
+# Runs AFTER k3s-server so hostvars['k3s_node_token'] is available.
+
+- name: Install k3s agent and join cluster
+  shell: |
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      K3S_URL="https://{{ k3s_server_internal_ip }}:6443" \
+      K3S_TOKEN="{{ hostvars[groups['k3s_server'][0]]['k3s_node_token'] }}" \
+      sh -s - agent \
+        --node-ip {{ ansible_default_ipv4.address }}
+  args:
+    creates: /usr/local/bin/k3s
+  become: yes
+
+- name: Wait for agent to appear in cluster
+  delegate_to: "{{ groups['k3s_server'][0] }}"
+  shell: k3s kubectl get node {{ ansible_hostname }} --no-headers 2>/dev/null | awk '{print $2}'
+  register: agent_status
+  until: agent_status.stdout == "Ready"
+  retries: 20
+  delay: 10
+  become: yes
