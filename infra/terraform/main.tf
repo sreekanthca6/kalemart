@@ -149,9 +149,11 @@ resource "google_compute_instance" "k3s_server" {
   }
 
   metadata = {
-    enable-oslogin = "true"
-    # Ansible reads this to know the node role
-    k3s-role = "server"
+    # OS Login disabled — Ansible uses a dedicated SSH key injected via metadata.
+    # With OS Login off, GCP creates the 'ansible' user from the ssh-keys entry.
+    enable-oslogin = "false"
+    ssh-keys       = "ansible:ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEEyKCh1DV0ZGKexMTVtehTb7lvNIUwKjlHz6GQeunAg ansible-github-actions"
+    k3s-role       = "server"
   }
 
   # Allow the VM to call GCP APIs (for pulling from Artifact Registry etc.)
@@ -188,7 +190,8 @@ resource "google_compute_instance" "k3s_agent" {
   }
 
   metadata = {
-    enable-oslogin = "true"
+    enable-oslogin = "false"
+    ssh-keys       = "ansible:ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEEyKCh1DV0ZGKexMTVtehTb7lvNIUwKjlHz6GQeunAg ansible-github-actions"
     k3s-role       = "agent"
   }
 
