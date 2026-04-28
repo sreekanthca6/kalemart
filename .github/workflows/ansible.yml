@@ -79,6 +79,22 @@ jobs:
           echo "${{ secrets.ANSIBLE_SSH_PRIVATE_KEY }}" > ~/.ssh/ansible_ed25519
           chmod 600 ~/.ssh/ansible_ed25519
 
+      # Read all secrets from Vault — single token replaces 7 individual GitHub secrets
+      - name: Read secrets from Vault
+        id: vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: http://104.198.108.15:8200
+          token: ${{ secrets.VAULT_TOKEN }}
+          secrets: |
+            kalemart/data/app GHCR_TOKEN                    | GHCR_TOKEN ;
+            kalemart/data/app POSTGRES_PASSWORD             | POSTGRES_PASSWORD ;
+            kalemart/data/app JWT_SECRET                    | JWT_SECRET ;
+            kalemart/data/app ANTHROPIC_API_KEY             | ANTHROPIC_API_KEY ;
+            kalemart/data/app SLACK_WEBHOOK_URL             | SLACK_WEBHOOK_URL ;
+            kalemart/data/app CLOUDFLARE_TUNNEL_CREDENTIALS | CLOUDFLARE_TUNNEL_CREDENTIALS ;
+            kalemart/data/app GRAFANA_ADMIN_PASSWORD        | GRAFANA_ADMIN_PASSWORD
+
       - name: Ping all nodes
         working-directory: infra/ansible
         run: ansible all -i inventory.ini -m ping
@@ -87,13 +103,13 @@ jobs:
         working-directory: infra/ansible
         run: ansible-playbook -i inventory.ini site.yml --diff -v
         env:
-          GHCR_TOKEN:                    ${{ secrets.GHCR_TOKEN }}
-          POSTGRES_PASSWORD:             ${{ secrets.POSTGRES_PASSWORD }}
-          JWT_SECRET:                    ${{ secrets.JWT_SECRET }}
-          ANTHROPIC_API_KEY:             ${{ secrets.ANTHROPIC_API_KEY }}
-          SLACK_WEBHOOK_URL:             ${{ secrets.SLACK_WEBHOOK_URL }}
-          CLOUDFLARE_TUNNEL_CREDENTIALS: ${{ secrets.CLOUDFLARE_TUNNEL_CREDENTIALS }}
-          GRAFANA_ADMIN_PASSWORD:        ${{ secrets.GRAFANA_ADMIN_PASSWORD }}
+          GHCR_TOKEN:                    ${{ env.GHCR_TOKEN }}
+          POSTGRES_PASSWORD:             ${{ env.POSTGRES_PASSWORD }}
+          JWT_SECRET:                    ${{ env.JWT_SECRET }}
+          ANTHROPIC_API_KEY:             ${{ env.ANTHROPIC_API_KEY }}
+          SLACK_WEBHOOK_URL:             ${{ env.SLACK_WEBHOOK_URL }}
+          CLOUDFLARE_TUNNEL_CREDENTIALS: ${{ env.CLOUDFLARE_TUNNEL_CREDENTIALS }}
+          GRAFANA_ADMIN_PASSWORD:        ${{ env.GRAFANA_ADMIN_PASSWORD }}
 
       - name: Upload kubeconfig
         uses: actions/upload-artifact@v4
