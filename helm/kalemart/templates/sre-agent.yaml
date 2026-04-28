@@ -24,7 +24,7 @@ spec:
       {{- end }}
       containers:
         - name: sre-agent
-          image: {{ .Values.sreAgent.image.repository }}:{{ .Values.sreAgent.image.tag }}
+          image: {{ include "kalemart.image" (dict "global" .Values.global "image" .Values.sreAgent.image) }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - containerPort: 8080
