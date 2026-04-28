@@ -1,4 +1,38 @@
 {{- if .Values.ingress.enabled }}
+# API ingress — strips /api prefix before forwarding to backend
+# e.g. /api/auth/login → /auth/login, /api/products → /products
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kalemart-api
+  namespace: {{ .Values.global.namespace }}
+  labels:
+    {{- include "kalemart.labels" . | nindent 4 }}
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: kalemart-backend
+                port:
+                  number: {{ .Values.backend.service.port }}
+          - path: /sre(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: kalemart-sre-agent
+                port:
+                  number: 8080
+---
+# Frontend ingress — no rewrite, all other traffic goes to Next.js
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -18,20 +52,6 @@ spec:
     - host: {{ .Values.ingress.host }}
       http:
         paths:
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: kalemart-backend
-                port:
-                  number: {{ .Values.backend.service.port }}
-          - path: /sre
-            pathType: Prefix
-            backend:
-              service:
-                name: kalemart-sre-agent
-                port:
-                  number: 8080
           - path: /
             pathType: Prefix
             backend:
