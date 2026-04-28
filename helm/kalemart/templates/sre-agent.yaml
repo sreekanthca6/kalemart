@@ -18,6 +18,10 @@ spec:
         app: kalemart-sre-agent
     spec:
       serviceAccountName: sre-agent
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: sre-agent
           image: {{ .Values.sreAgent.image.repository }}:{{ .Values.sreAgent.image.tag }}

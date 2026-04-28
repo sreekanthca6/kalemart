@@ -3,6 +3,8 @@ global:
   imageRegistry: ""
   imagePullPolicy: IfNotPresent
   otelEndpoint: http://otel-collector-opentelemetry-collector.observability:4317
+  imagePullSecrets:
+    - name: ghcr-pull-secret
 frontend:
   enabled: true
   image:
