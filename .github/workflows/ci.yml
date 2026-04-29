@@ -15,7 +15,9 @@ concurrency:
 jobs:
   build:
     name: Build ${{ matrix.service }}
-    runs-on: ubuntu-latest
+    # main → amd64 runner (GCP VMs are x86_64)
+    # dev  → native arm64 runner (OrbStack on Apple Silicon — avoids QEMU crashes)
+    runs-on: ${{ github.ref == 'refs/heads/dev' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write   # push to GHCR
@@ -72,9 +74,9 @@ jobs:
           context: ${{ matrix.context }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          # main → amd64 only (GCP VMs are x86_64)
-          # dev  → amd64 + arm64 (OrbStack on Apple Silicon needs arm64)
-          platforms: ${{ github.ref == 'refs/heads/dev' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          # main → amd64 (GCP VMs are x86_64, built on ubuntu-latest)
+          # dev  → arm64 (OrbStack on Apple Silicon, built natively on ubuntu-24.04-arm)
+          platforms: ${{ github.ref == 'refs/heads/dev' && 'linux/arm64' || 'linux/amd64' }}
           # Layer cache stored in GitHub Actions cache — speeds up rebuilds
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
