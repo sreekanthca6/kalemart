@@ -21,6 +21,7 @@ help:
 	@echo "  ansible-ping  Verify Ansible can reach all nodes"
 	@echo "  ansible-k3s   Run k3s install playbook"
 	@echo "  dev-deploy    Deploy dev-latest images to OrbStack (local dev cluster)"
+	@echo "  dev-seed      Seed dev database with 6 months of demo data"
 	@echo "  dev-teardown  Remove kalemart release from OrbStack"
 	@echo ""
 
@@ -96,3 +97,16 @@ dev-teardown:
 	@helm uninstall kalemart --namespace=$(NAMESPACE) || true
 	@kubectl delete namespace $(NAMESPACE) || true
 	@echo "✓ Done."
+
+dev-seed:
+	@echo "→ Seeding dev database with 6 months of demo data..."
+	@kubectl port-forward -n $(NAMESPACE) svc/kalemart-postgres 5433:5432 &>/tmp/pf-pg-seed.log & \
+		PF_PID=$$!; \
+		sleep 3; \
+		cd ../apps/backend && \
+		cp ../../scripts/seed-db.js ./seed-db-tmp.js && \
+		PGHOST=localhost PGPORT=5433 PGDATABASE=kalemart PGUSER=kalemart \
+		PGPASSWORD=$(POSTGRES_PASSWORD) node seed-db-tmp.js; \
+		rm -f seed-db-tmp.js; \
+		kill $$PF_PID 2>/dev/null || true
+	@echo "✓ Dev database seeded."
