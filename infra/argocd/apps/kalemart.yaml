@@ -3,7 +3,6 @@ kind: Application
 metadata:
   name: kalemart
   namespace: argocd
-  # When the Application is deleted, also delete all managed resources
   finalizers:
     - resources-finalizer.argocd.io
 spec:
@@ -14,11 +13,13 @@ spec:
     targetRevision: main
     path: helm/kalemart
     helm:
-      # Layer prod overrides on top of base values
       valueFiles:
         - values.yaml
         - values.prod.yaml
-      # Non-secret overrides — safe to store in Git
+      # Only non-secret overrides live here — safe to store in Git.
+      # Secrets are managed as a Kubernetes Secret by Ansible (from Vault).
+      # The Helm secret.yaml uses lookup() to read the existing secret,
+      # so no secret values ever touch this file or Argo CD parameters.
       parameters:
         - name: ingress.host
           value: kalemart.sreekanthp.com
@@ -26,13 +27,12 @@ spec:
           value: "false"
 
   destination:
-    # kubernetes.default.svc = the cluster Argo CD itself runs in
     server: https://kubernetes.default.svc
     namespace: kalemart
 
   syncPolicy:
     automated:
-      prune: true      # delete resources removed from Git
-      selfHeal: true   # revert manual cluster changes back to Git state
+      prune: true
+      selfHeal: true
     syncOptions:
       - CreateNamespace=true

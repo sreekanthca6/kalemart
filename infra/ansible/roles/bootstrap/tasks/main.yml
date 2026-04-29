@@ -75,6 +75,19 @@
   become: yes
   changed_when: false
 
+- name: Create kalemart-secrets from Vault values (before Argo CD syncs)
+  shell: |
+    k3s kubectl create secret generic kalemart-secrets \
+      --namespace=kalemart \
+      --from-literal=POSTGRES_PASSWORD={{ postgres_password }} \
+      --from-literal=JWT_SECRET={{ jwt_secret }} \
+      --from-literal=ANTHROPIC_API_KEY={{ anthropic_api_key }} \
+      --from-literal=SLACK_WEBHOOK_URL={{ slack_webhook_url }} \
+      --from-literal=DATABASE_URL=postgresql://kalemart:{{ postgres_password }}@kalemart-postgres:5432/kalemart \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  become: yes
+  changed_when: false
+
 - name: Create Cloudflare tunnel credentials secret (cloudflared namespace)
   shell: |
     k3s kubectl create secret generic tunnel-credentials \
@@ -85,6 +98,8 @@
   changed_when: false
 
 # ── Apply Argo CD Applications ────────────────────────────────────────────────
+# kalemart-secrets already exists — Helm lookup() will find it and preserve
+# the values. No kubectl patch needed after this point.
 
 - name: Copy Application manifests to server
   copy:
@@ -97,22 +112,7 @@
   become: yes
   changed_when: false
 
-# ── Patch Applications with secret values ─────────────────────────────────────
-# These are stored encrypted in argocd-secret (never in Git)
-
-- name: Patch kalemart Application with secrets
-  shell: |
-    k3s kubectl patch application kalemart -n argocd --type=merge -p '{
-      "spec":{"source":{"helm":{"parameters":[
-        {"name":"ingress.host","value":"kalemart.sreekanthp.com"},
-        {"name":"ingress.tls.enabled","value":"false"},
-        {"name":"secrets.postgresPassword","value":"{{ postgres_password }}"},
-        {"name":"secrets.jwtSecret","value":"{{ jwt_secret }}"},
-        {"name":"secrets.anthropicApiKey","value":"{{ anthropic_api_key }}"},
-        {"name":"secrets.slackWebhookUrl","value":"{{ slack_webhook_url }}"}
-      ]}}}'
-  become: yes
-  changed_when: false
+# ── Observability secrets ─────────────────────────────────────────────────────
 
 - name: Patch prometheus Application with Grafana password and Alertmanager Slack URL
   shell: |
