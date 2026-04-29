@@ -5,6 +5,10 @@ HELM_DIR := ../helm/kalemart
 GHCR_USER := sreekanthca6
 NAMESPACE  := kalemart
 
+# Auto-load local secrets — never committed (covered by .gitignore .env.*)
+-include .env.local
+export
+
 .PHONY: help bootstrap init plan apply destroy ansible-ping ansible-k3s dev-deploy dev-teardown
 
 help:
@@ -48,8 +52,9 @@ ssh-agent:
 	$(shell cd $(TF_DIR) && terraform output -raw ssh_agent)
 
 # ── Local dev (OrbStack) ──────────────────────────────────────────────────────
-# Requires: OrbStack running, kubectl context = orbstack, GHCR_TOKEN env var set
-# Usage:    GHCR_TOKEN=<pat> make dev-deploy
+# Requires: OrbStack running, kubectl context = orbstack
+# Secrets:  stored in infra/.env.local (gitignored) — copy from .env.local.example
+# Usage:    make dev-deploy   (secrets loaded automatically from .env.local)
 #
 # Images are pulled from GHCR (dev-latest tag) — push to the dev branch first.
 
@@ -57,10 +62,13 @@ dev-deploy:
 	@echo "→ Checking OrbStack context..."
 	@kubectl config current-context | grep -q orbstack || \
 		(echo "ERROR: kubectl context is not orbstack. Run: kubectl config use-context orbstack" && exit 1)
+	@test -n "$(GHCR_TOKEN)"        || (echo "ERROR: GHCR_TOKEN not set — add it to infra/.env.local" && exit 1)
+	@test -n "$(POSTGRES_PASSWORD)" || (echo "ERROR: POSTGRES_PASSWORD not set — add it to infra/.env.local" && exit 1)
+	@test -n "$(JWT_SECRET)"        || (echo "ERROR: JWT_SECRET not set — add it to infra/.env.local" && exit 1)
+	@test -n "$(ANTHROPIC_API_KEY)" || (echo "ERROR: ANTHROPIC_API_KEY not set — add it to infra/.env.local" && exit 1)
 	@echo "→ Creating namespace..."
 	@kubectl create namespace $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
 	@echo "→ Creating GHCR pull secret..."
-	@test -n "$(GHCR_TOKEN)" || (echo "ERROR: GHCR_TOKEN is not set. Export it first." && exit 1)
 	@kubectl create secret docker-registry ghcr-pull-secret \
 		--namespace=$(NAMESPACE) \
 		--docker-server=ghcr.io \
@@ -68,27 +76,17 @@ dev-deploy:
 		--docker-password=$(GHCR_TOKEN) \
 		--docker-email=$(GHCR_USER)@gmail.com \
 		--dry-run=client -o yaml | kubectl apply -f -
-	@echo "→ Creating app secrets (reading from env)..."
-	@test -n "$(POSTGRES_PASSWORD)" || (echo "ERROR: POSTGRES_PASSWORD not set" && exit 1)
-	@test -n "$(JWT_SECRET)"         || (echo "ERROR: JWT_SECRET not set" && exit 1)
-	@test -n "$(ANTHROPIC_API_KEY)"  || (echo "ERROR: ANTHROPIC_API_KEY not set" && exit 1)
-	@kubectl create secret generic kalemart-secrets \
-		--namespace=$(NAMESPACE) \
-		--from-literal=POSTGRES_PASSWORD=$(POSTGRES_PASSWORD) \
-		--from-literal=JWT_SECRET=$(JWT_SECRET) \
-		--from-literal=ANTHROPIC_API_KEY=$(ANTHROPIC_API_KEY) \
-		--from-literal=SLACK_WEBHOOK_URL=$(SLACK_WEBHOOK_URL) \
-		--dry-run=client -o yaml | kubectl apply -f -
 	@echo "→ Deploying kalemart (dev-latest) to OrbStack..."
 	@helm upgrade --install kalemart $(HELM_DIR) \
 		--namespace=$(NAMESPACE) \
+		--create-namespace \
 		--values $(HELM_DIR)/values.yaml \
 		--values $(HELM_DIR)/values.dev.yaml \
 		--set secrets.postgresPassword="$(POSTGRES_PASSWORD)" \
 		--set secrets.jwtSecret="$(JWT_SECRET)" \
 		--set secrets.anthropicApiKey="$(ANTHROPIC_API_KEY)" \
 		--set secrets.slackWebhookUrl="$(SLACK_WEBHOOK_URL)" \
-		--wait --timeout=3m
+		--wait --timeout=5m
 	@echo ""
 	@echo "✓ Dev cluster deployed. Pods:"
 	@kubectl get pods -n $(NAMESPACE)

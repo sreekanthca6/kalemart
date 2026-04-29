@@ -72,6 +72,9 @@ jobs:
           context: ${{ matrix.context }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          # main → amd64 only (GCP VMs are x86_64)
+          # dev  → amd64 + arm64 (OrbStack on Apple Silicon needs arm64)
+          platforms: ${{ github.ref == 'refs/heads/dev' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
           # Layer cache stored in GitHub Actions cache — speeds up rebuilds
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
