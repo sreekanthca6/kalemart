@@ -1,9 +1,11 @@
 global:
-  # imageRegistry and imagePullPolicy are set by deploy-local.sh at deploy time
-  # so they are not hardcoded here
+  imageRegistry: "ghcr.io/sreekanthca6"
+  imagePullPolicy: Always   # always pull dev-latest, never use a stale cached layer
   otelEndpoint: http://otel-collector-opentelemetry-collector.observability:4317
 
 frontend:
+  image:
+    tag: dev-latest
   replicaCount: 1
   env:
     BACKEND_URL: http://kalemart-backend:4000
@@ -17,6 +19,8 @@ frontend:
       memory: 256Mi
 
 backend:
+  image:
+    tag: dev-latest
   replicaCount: 1
   env:
     NODE_ENV: development
@@ -29,6 +33,8 @@ backend:
       memory: 256Mi
 
 worker:
+  image:
+    tag: dev-latest
   replicaCount: 1
   resources:
     requests:
@@ -39,6 +45,8 @@ worker:
       memory: 128Mi
 
 aiService:
+  image:
+    tag: dev-latest
   replicaCount: 1
   resources:
     requests:
@@ -47,6 +55,10 @@ aiService:
     limits:
       cpu: 500m
       memory: 512Mi
+
+sreAgent:
+  image:
+    tag: dev-latest
 
 ingress:
   enabled: true
