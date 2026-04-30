@@ -154,5 +154,52 @@ else
   not_ok "public Grafana database health is ok"
 fi
 
+dashboard_status="$(
+  curl -sS --max-time 20 \
+    "$GRAFANA_URL/api/search" \
+    -o "$tmpdir/grafana-search.json" \
+    -w '%{http_code}' || true
+)"
+
+if [[ "$dashboard_status" == "200" ]]; then
+  ok "public Grafana dashboard search returns 200"
+else
+  not_ok "public Grafana dashboard search returns 200 (got $dashboard_status)"
+fi
+
+kalemart_dashboard_count="$(
+  python3 - "$tmpdir/grafana-search.json" <<'PY'
+import json
+import sys
+
+required = {
+    "kalemart-sre-overview",
+    "kalemart-platform",
+    "kalemart-alerts",
+    "kalemart-api-latency",
+    "kalemart-ai",
+    "kalemart-inventory",
+}
+
+try:
+    with open(sys.argv[1]) as fh:
+        dashboards = json.load(fh)
+    found = {item.get("uid") for item in dashboards}
+    print(len(required & found))
+except Exception:
+    print(0)
+PY
+)"
+
+if [[ "$kalemart_dashboard_count" -eq 6 ]]; then
+  ok "public Grafana has all Kalemart dashboards"
+else
+  not_ok "public Grafana has all Kalemart dashboards (got $kalemart_dashboard_count/6)"
+fi
+
+check_http \
+  "public Grafana SRE Overview dashboard opens" \
+  "$GRAFANA_URL/d/kalemart-sre-overview/kalemart-sre-overview"
+
 printf '\nPassed: %d Failed: %d\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]]
