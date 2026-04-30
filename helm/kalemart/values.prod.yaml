@@ -67,3 +67,9 @@ ingress:
   tls:
     enabled: true
     secretName: kalemart-tls
+
+secrets:
+  # Production secrets are created by the Ansible/Vault bootstrap and must not be
+  # rendered by Helm/Argo CD. Otherwise Argo can overwrite real secret values
+  # with empty chart defaults.
+  create: false

@@ -230,6 +230,11 @@ make -C infra dev-teardown   # uninstalls the kalemart helm release
 
 Prod is fully GitOps — **you do not deploy directly**. You commit, push, and Argo CD syncs.
 
+Production runtime secrets are the exception to Helm rendering: `values.prod.yaml`
+sets `secrets.create=false`, so Argo CD does not manage `kalemart-secrets`.
+That Secret is owned by the Ansible/Vault bootstrap and must already exist before
+the app rolls out.
+
 ### 3a. Pre-flight (before pushing)
 
 1. Tested via `./scripts/deploy-local.sh dev` on `orbstack`.

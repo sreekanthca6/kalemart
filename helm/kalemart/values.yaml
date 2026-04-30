@@ -117,6 +117,7 @@ postgres:
       cpu: 500m
       memory: 512Mi
 secrets:
+  create: true
   anthropicApiKey: ""
   postgresPassword: ""
   jwtSecret: ""
