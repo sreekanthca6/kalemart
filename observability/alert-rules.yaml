@@ -16,9 +16,9 @@ spec:
           expr: |
             histogram_quantile(0.99,
               sum by (le, route) (
-                rate(http_request_duration_seconds_bucket{job="kalemart-backend"}[5m])
+                rate(kalemart_http_request_duration_ms_milliseconds_bucket{job="kalemart-backend"}[5m])
               )
-            ) > 2
+            ) > 2000
           for: 5m
           labels:
             severity: warning
@@ -26,16 +26,16 @@ spec:
             service: backend
           annotations:
             summary: "High API latency on {{ $labels.route }}"
-            description: "p99 latency is {{ $value | humanizeDuration }} on route {{ $labels.route }} (threshold: 2s)"
+            description: "p99 latency is {{ $value }}ms on route {{ $labels.route }} (threshold: 2000ms)"
             runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/api-latency.md"
 
         - alert: TaxAPIHighLatency
           expr: |
             histogram_quantile(0.99,
               sum by (le) (
-                rate(http_request_duration_seconds_bucket{job="kalemart-backend", route=~"/api/tax.*"}[5m])
+                rate(kalemart_http_request_duration_ms_milliseconds_bucket{job="kalemart-backend", route=~"/api/tax.*"}[5m])
               )
-            ) > 0.5
+            ) > 500
           for: 5m
           labels:
             severity: critical
@@ -44,7 +44,7 @@ spec:
             subsystem: tax
           annotations:
             summary: "Tax API p99 latency exceeds 500ms"
-            description: "Tax endpoint p99 = {{ $value | humanizeDuration }}. Likely a DB query plan issue."
+            description: "Tax endpoint p99 = {{ $value }}ms. Likely a DB query plan issue."
             runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/tax-latency.md"
 
     # ── Error Rate ─────────────────────────────────────────────────────────────
@@ -53,13 +53,9 @@ spec:
       rules:
         - alert: HighErrorRate
           expr: |
-            sum by (service) (
-              rate(http_requests_total{job="kalemart-backend", status=~"5.."}[5m])
-            )
+            sum(rate(kalemart_http_errors_total{job="kalemart-backend"}[5m]))
             /
-            sum by (service) (
-              rate(http_requests_total{job="kalemart-backend"}[5m])
-            ) > 0.01
+            clamp_min(sum(rate(kalemart_http_requests_total{job="kalemart-backend"}[5m])), 1) > 0.01
           for: 5m
           labels:
             severity: critical
@@ -72,7 +68,7 @@ spec:
 
         - alert: AIServiceErrors
           expr: |
-            sum(rate(http_requests_total{job="kalemart-ai-service", status=~"5.."}[5m])) > 0.1
+            sum(rate(kalemart_ai_http_requests_total{job="kalemart-ai-service", status_class="5xx"}[5m])) > 0.1
           for: 3m
           labels:
             severity: warning
@@ -108,6 +104,91 @@ spec:
           annotations:
             summary: "Pod {{ $labels.pod }} not ready for 5 minutes"
             description: "Pod {{ $labels.pod }} has been unready since {{ $value }}"
+
+    # ── Infrastructure Health ─────────────────────────────────────────────────
+    - name: kalemart.infrastructure
+      interval: 30s
+      rules:
+        - alert: NodeNotReady
+          expr: |
+            kube_node_status_condition{condition="Ready", status="true"} == 0
+          for: 5m
+          labels:
+            severity: critical
+            team: sre
+            service: kubernetes
+          annotations:
+            summary: "Kubernetes node {{ $labels.node }} is not ready"
+            description: "Node {{ $labels.node }} has been NotReady for more than 5 minutes."
+            runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/node-not-ready.md"
+
+        - alert: DeploymentUnavailable
+          expr: |
+            kube_deployment_status_replicas_unavailable{namespace=~"kalemart|cloudflared|observability"} > 0
+          for: 5m
+          labels:
+            severity: critical
+            team: sre
+            service: kubernetes
+          annotations:
+            summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} has unavailable replicas"
+            description: "{{ $labels.deployment }} has {{ $value }} unavailable replica(s). Check rollout, pod events, and recent image changes."
+            runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/deployment-unavailable.md"
+
+        - alert: PodHighCPU
+          expr: |
+            (
+              sum by (namespace, pod) (
+                rate(container_cpu_usage_seconds_total{namespace=~"kalemart|cloudflared|observability", container!="", image!=""}[5m])
+              )
+              /
+              sum by (namespace, pod) (
+                kube_pod_container_resource_limits{namespace=~"kalemart|cloudflared|observability", resource="cpu"}
+              )
+            ) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            team: sre
+            service: kubernetes
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} CPU above 90% of limit"
+            description: "CPU saturation can cause latency and throttling. Check pod CPU, request rate, and HPA status."
+            runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/high-cpu.md"
+
+        - alert: PodHighMemory
+          expr: |
+            (
+              sum by (namespace, pod) (
+                container_memory_working_set_bytes{namespace=~"kalemart|cloudflared|observability", container!="", image!=""}
+              )
+              /
+              sum by (namespace, pod) (
+                kube_pod_container_resource_limits{namespace=~"kalemart|cloudflared|observability", resource="memory"}
+              )
+            ) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            team: sre
+            service: kubernetes
+          annotations:
+            summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} memory above 90% of limit"
+            description: "Memory saturation increases OOMKill risk. Check memory trend, logs, and recent deploys."
+            runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/high-memory.md"
+
+        - alert: CloudflaredTunnelDown
+          expr: |
+            kube_deployment_status_replicas_available{namespace="cloudflared", deployment="cloudflared"} < 1
+          for: 2m
+          labels:
+            severity: critical
+            team: sre
+            service: cloudflared
+          annotations:
+            summary: "Cloudflare Tunnel has no available replicas"
+            description: "Public traffic may fail because cloudflared has no available pod. Check cloudflared logs, credentials, and ingress connectivity."
+            runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/cloudflared-down.md"
 
     # ── Database ───────────────────────────────────────────────────────────────
     - name: kalemart.database
@@ -149,9 +230,9 @@ spec:
         - alert: SLOErrorBudgetFastBurn
           expr: |
             (
-              sum(rate(http_requests_total{job="kalemart-backend", status=~"5.."}[1h]))
+              sum(rate(kalemart_http_errors_total{job="kalemart-backend"}[1h]))
               /
-              sum(rate(http_requests_total{job="kalemart-backend"}[1h]))
+              clamp_min(sum(rate(kalemart_http_requests_total{job="kalemart-backend"}[1h])), 1)
             ) > (10 * 0.005)
           for: 5m
           labels:
@@ -166,9 +247,9 @@ spec:
         - alert: SLOErrorBudgetSlowBurn
           expr: |
             (
-              sum(rate(http_requests_total{job="kalemart-backend", status=~"5.."}[6h]))
+              sum(rate(kalemart_http_errors_total{job="kalemart-backend"}[6h]))
               /
-              sum(rate(http_requests_total{job="kalemart-backend"}[6h]))
+              clamp_min(sum(rate(kalemart_http_requests_total{job="kalemart-backend"}[6h])), 1)
             ) > (2 * 0.005)
           for: 15m
           labels:

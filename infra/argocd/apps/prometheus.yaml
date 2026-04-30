@@ -41,6 +41,26 @@ spec:
               - name: null-receiver
         grafana:
           # adminPassword patched by Ansible (not stored in Git)
+          grafana.ini:
+            server:
+              root_url: https://grafana.kalemart.sreekanthp.com/
+              domain: grafana.kalemart.sreekanthp.com
+            auth.anonymous:
+              enabled: true
+              org_role: Viewer
+              hide_version: true
+            users:
+              viewers_can_edit: false
+            analytics:
+              reporting_enabled: false
+              check_for_updates: false
+          ingress:
+            enabled: true
+            ingressClassName: nginx
+            hosts:
+              - grafana.kalemart.sreekanthp.com
+            path: /
+            pathType: Prefix
           service:
             type: NodePort
             nodePort: 30300
@@ -51,6 +71,13 @@ spec:
             enabled: false
           # Manage datasources here — prevents conflict with loki-stack's configmap
           sidecar:
+            dashboards:
+              enabled: true
+              label: grafana_dashboard
+              labelValue: "1"
+              searchNamespace: observability
+              provider:
+                foldersFromFilesStructure: true
             datasources:
               enabled: false
           additionalDataSources:
@@ -61,7 +88,7 @@ spec:
               isDefault: false
             - name: Tempo
               type: tempo
-              url: http://tempo.observability.svc.cluster.local:3100
+              url: http://tempo.observability.svc.cluster.local:3200
               access: proxy
               isDefault: false
   destination:

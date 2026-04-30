@@ -47,7 +47,7 @@ fi
 if [[ "$SKIP_OBSERVABILITY" != "true" ]]; then
   echo ""
   echo "📡 Deploying observability stack…"
-  helmfile -f observability/helmfile.yaml apply --suppress-diff
+  helmfile -f observability/helmfile.local.yaml apply --suppress-diff
   kubectl apply -f observability/grafana-dashboards-configmap.yaml
   echo "✓  Observability stack ready"
 else

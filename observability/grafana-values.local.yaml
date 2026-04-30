@@ -1,0 +1,17 @@
+# Local OrbStack override. Use with:
+#   cd observability && helmfile -e local apply
+#
+# Access Grafana locally with:
+#   kubectl -n observability port-forward svc/grafana 3001:80
+#   open http://localhost:3001
+
+ingress:
+  enabled: false
+
+grafana.ini:
+  server:
+    root_url: "http://localhost:3001/"
+  auth.anonymous:
+    enabled: true
+    org_role: Viewer
+    hide_version: true

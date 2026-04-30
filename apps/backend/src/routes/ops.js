@@ -7,6 +7,10 @@ function bool(value) {
   return value ? 'configured' : 'missing';
 }
 
+function publicUrl(value, fallback) {
+  return value && value.trim() ? value.trim() : fallback;
+}
+
 router.get('/readiness', async (req, res, next) => {
   try {
     const started = Date.now();
@@ -59,6 +63,71 @@ router.get('/readiness', async (req, res, next) => {
           webhookSecret: config.shopify.webhookSecret === 'dev-secret' ? 'development-secret' : 'configured',
           accessToken: bool(config.shopify.accessToken),
         },
+      },
+      observability: {
+        grafana: {
+          status: bool(process.env.GRAFANA_URL),
+          url: publicUrl(process.env.GRAFANA_URL, 'http://localhost:3001'),
+          dashboards: [
+            {
+              name: 'SRE Overview',
+              description: 'Golden signals, SLO burn, pod health, and active alerts.',
+              path: '/d/kalemart-sre-overview/kalemart-sre-overview',
+            },
+            {
+              name: 'Platform Infrastructure',
+              description: 'Nodes, pods, CPU, memory, restarts, and Kubernetes saturation.',
+              path: '/d/kalemart-platform/kalemart-platform-infrastructure',
+            },
+            {
+              name: 'Prometheus Alerts',
+              description: 'Firing and pending alerts grouped by severity, service, and runbook.',
+              path: '/d/kalemart-alerts/kalemart-prometheus-alerts',
+            },
+            {
+              name: 'API Latency',
+              description: 'Request rate, p50/p95/p99 latency, errors, and trace drill-downs.',
+              path: '/d/kalemart-api-latency/kalemart-api-latency',
+            },
+            {
+              name: 'AI Service',
+              description: 'AI request rate, latency, errors, and service-level telemetry.',
+              path: '/d/kalemart-ai/kalemart-ai-service',
+            },
+            {
+              name: 'Inventory',
+              description: 'Business health metrics for product count, low stock, and out-of-stock risk.',
+              path: '/d/kalemart-inventory/kalemart-inventory',
+            },
+          ],
+        },
+        prometheus: {
+          status: bool(process.env.PROMETHEUS_URL),
+          url: publicUrl(process.env.PROMETHEUS_URL, 'http://localhost:9090'),
+          scrapeInterval: '15s',
+          evaluationInterval: '15s',
+        },
+        alertmanager: {
+          status: bool(process.env.ALERTMANAGER_URL),
+          url: publicUrl(process.env.ALERTMANAGER_URL, 'http://localhost:9093'),
+          receivers: ['sre-agent', 'slack'],
+        },
+        signals: [
+          { name: 'Availability', query: '1 - (5xx / total requests)', dashboard: 'SRE Overview' },
+          { name: 'Latency', query: 'p95/p99 from kalemart_http_request_duration_ms_milliseconds', dashboard: 'API Latency' },
+          { name: 'Traffic', query: 'sum(rate(kalemart_http_requests_total[5m]))', dashboard: 'SRE Overview' },
+          { name: 'Saturation', query: 'container CPU/memory + pod restarts', dashboard: 'Platform Infrastructure' },
+        ],
+        alerts: [
+          { name: 'APIHighLatency', severity: 'warning', target: 'backend', action: 'Slack + SRE Agent' },
+          { name: 'TaxAPIHighLatency', severity: 'critical', target: 'backend/tax', action: 'Slack + SRE Agent' },
+          { name: 'HighErrorRate', severity: 'critical', target: 'backend', action: 'Slack + SRE Agent' },
+          { name: 'PodCrashLooping', severity: 'critical', target: 'kalemart namespace', action: 'Slack + SRE Agent' },
+          { name: 'DeploymentUnavailable', severity: 'critical', target: 'kubernetes', action: 'Slack + SRE Agent' },
+          { name: 'CloudflaredTunnelDown', severity: 'critical', target: 'edge ingress', action: 'Slack + SRE Agent' },
+          { name: 'PodHighCPU / PodHighMemory', severity: 'warning', target: 'platform saturation', action: 'Slack + SRE Agent' },
+          { name: 'SLOErrorBudgetFastBurn', severity: 'critical', target: 'availability SLO', action: 'Slack + SRE Agent' },
+        ],
       },
       deployment: {
         imageTag: process.env.APP_VERSION || '0.0.1',

@@ -65,4 +65,6 @@ data:
     ingress:
       - hostname: kalemart.sreekanthp.com
         service: http://ingress-nginx-controller.ingress-nginx.svc.cluster.local:80
+      - hostname: grafana.kalemart.sreekanthp.com
+        service: http://ingress-nginx-controller.ingress-nginx.svc.cluster.local:80
       - service: http_status:404

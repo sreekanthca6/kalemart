@@ -13,13 +13,13 @@
       "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [{
-        "expr": "rate(kalemart_ai_requests_total[1m]) * 60",
+        "expr": "sum(rate(kalemart_ai_http_requests_total[1m])) * 60",
         "legendFormat": "Requests/min"
       }]
     },
     {
       "id": 2,
-      "title": "Claude API Latency P95 (ms)",
+      "title": "AI Service Latency P95 (ms)",
       "type": "gauge",
       "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -39,43 +39,41 @@
         }
       },
       "targets": [{
-        "expr": "histogram_quantile(0.95, sum(rate(kalemart_ai_claude_duration_bucket[5m])) by (le)) * 1000",
+        "expr": "histogram_quantile(0.95, sum(rate(kalemart_ai_http_request_duration_ms_milliseconds_bucket[5m])) by (le))",
         "legendFormat": "P95"
       }]
     },
     {
       "id": 3,
-      "title": "Reorder Suggestions Generated",
+      "title": "AI 5xx Errors / min",
       "type": "stat",
       "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [{
-        "expr": "kalemart_ai_reorder_suggestions_total",
-        "legendFormat": "Suggestions"
+        "expr": "(sum(rate(kalemart_ai_http_requests_total{status_class=\"5xx\"}[1m])) or vector(0)) * 60",
+        "legendFormat": "5xx/min"
       }]
     },
     {
       "id": 4,
-      "title": "AI Service Traces",
-      "type": "table",
+      "title": "AI Traffic by Route",
+      "type": "timeseries",
       "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
-      "datasource": { "type": "tempo", "uid": "tempo" },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [{
-        "queryType": "nativeSearch",
-        "serviceName": "kalemart-ai-service",
-        "limit": 20
+        "expr": "sum by (route, status_class) (rate(kalemart_ai_http_requests_total[5m]))",
+        "legendFormat": "{{route}} {{status_class}}"
       }]
     },
     {
       "id": 5,
-      "title": "AI Service Logs",
-      "type": "logs",
+      "title": "AI observability note",
+      "type": "text",
       "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
-      "datasource": { "type": "loki", "uid": "loki" },
-      "targets": [{
-        "expr": "{service_name=\"kalemart-ai-service\"}",
-        "legendFormat": ""
-      }]
+      "options": {
+        "mode": "markdown",
+        "content": "This local dashboard intentionally uses Prometheus metrics that are confirmed to exist. Tempo is wired separately for traces, but this panel avoids showing an empty trace search when no AI trace traffic has been generated."
+      }
     }
   ]
 }

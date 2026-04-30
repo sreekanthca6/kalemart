@@ -21,6 +21,7 @@ kubectl port-forward -n kalemart     svc/kalemart-backend    4000:4000 &
 kubectl port-forward -n kalemart     svc/kalemart-ai-service 5000:5000 &
 kubectl port-forward -n observability svc/grafana            3001:80   &
 kubectl port-forward -n observability svc/prometheus-server  9090:80   &
+kubectl port-forward -n observability svc/prometheus-alertmanager 9093:9093 &
 
 sleep 2
 
@@ -33,6 +34,7 @@ echo "│  AI Service        http://localhost:5000            │"
 echo "│  Grafana           http://localhost:3001            │"
 echo "│    login: admin / kalemart-dev                     │"
 echo "│  Prometheus        http://localhost:9090            │"
+echo "│  Alertmanager      http://localhost:9093            │"
 echo "└─────────────────────────────────────────────────────┘"
 echo ""
 echo "Press Ctrl-C to stop all port-forwards."

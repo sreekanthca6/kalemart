@@ -17,25 +17,241 @@ server:
     scrape_interval: 15s
     evaluation_interval: 15s
 
-  # Scrape the OTel Collector's own metrics
-  extraScrapeConfigs: |
-    - job_name: 'otel-collector'
-      static_configs:
-        - targets: ['otel-collector-opentelemetry-collector.observability.svc.cluster.local:8888']
-    - job_name: 'kalemart-backend'
-      static_configs:
-        - targets: ['kalemart-backend.kalemart.svc.cluster.local:4000']
-    - job_name: 'kalemart-ai-service'
-      static_configs:
-        - targets: ['kalemart-ai-service.kalemart.svc.cluster.local:5000']
-
   # Load alert rules from ConfigMap
   alertingRules: {}
   ruleFiles:
     - /etc/config/alerting_rules.yml
 
+# Scrape the OTel Collector's own metrics. App metrics are pushed to Prometheus
+# via OTLP → OTel Collector → Prometheus remote write.
+extraScrapeConfigs: |
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['otel-collector-opentelemetry-collector.observability.svc.cluster.local:8888']
+
+serverFiles:
+  alerting_rules.yml:
+    groups:
+      - name: kalemart.latency
+        interval: 30s
+        rules:
+          - alert: APIHighLatency
+            expr: |
+              histogram_quantile(0.99,
+                sum by (le, route) (
+                  rate(kalemart_http_request_duration_ms_milliseconds_bucket{job="kalemart-backend"}[5m])
+                )
+              ) > 2000
+            for: 5m
+            labels:
+              severity: warning
+              team: sre
+              service: backend
+            annotations:
+              summary: "High API latency on {{ $labels.route }}"
+              description: "p99 latency is {{ $value }}ms on route {{ $labels.route }} (threshold: 2000ms)"
+              runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/api-latency.md"
+
+          - alert: TaxAPIHighLatency
+            expr: |
+              histogram_quantile(0.99,
+                sum by (le) (
+                  rate(kalemart_http_request_duration_ms_milliseconds_bucket{job="kalemart-backend", route=~"/api/tax.*"}[5m])
+                )
+              ) > 500
+            for: 5m
+            labels:
+              severity: critical
+              team: sre
+              service: backend
+              subsystem: tax
+            annotations:
+              summary: "Tax API p99 latency exceeds 500ms"
+              description: "Tax endpoint p99 = {{ $value }}ms. Likely a DB query plan issue."
+              runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/tax-latency.md"
+
+      - name: kalemart.errors
+        interval: 30s
+        rules:
+          - alert: HighErrorRate
+            expr: |
+              sum(rate(kalemart_http_errors_total{job="kalemart-backend"}[5m]))
+              /
+              clamp_min(sum(rate(kalemart_http_requests_total{job="kalemart-backend"}[5m])), 1) > 0.01
+            for: 5m
+            labels:
+              severity: critical
+              team: sre
+              service: backend
+            annotations:
+              summary: "Error rate above 1% on backend"
+              description: "{{ $value | humanizePercentage }} of requests are 5xx errors"
+              runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/high-error-rate.md"
+
+          - alert: AIServiceErrors
+            expr: |
+              sum(rate(kalemart_ai_http_requests_total{job="kalemart-ai-service", status_class="5xx"}[5m])) > 0.1
+            for: 3m
+            labels:
+              severity: warning
+              team: sre
+              service: ai-service
+            annotations:
+              summary: "AI service returning errors"
+              description: "AI service error rate: {{ $value }} req/s. Check ANTHROPIC_API_KEY."
+
+      - name: kalemart.pods
+        interval: 30s
+        rules:
+          - alert: PodCrashLooping
+            expr: |
+              increase(kube_pod_container_status_restarts_total{namespace="kalemart"}[15m]) > 3
+            for: 0m
+            labels:
+              severity: critical
+              team: sre
+            annotations:
+              summary: "Pod {{ $labels.pod }} is crash looping"
+              description: "{{ $labels.container }} in pod {{ $labels.pod }} has restarted {{ $value }} times in 15m"
+              runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/pod-crashloop.md"
+
+          - alert: PodNotReady
+            expr: |
+              kube_pod_status_ready{namespace="kalemart", condition="true"} == 0
+            for: 5m
+            labels:
+              severity: warning
+              team: sre
+            annotations:
+              summary: "Pod {{ $labels.pod }} not ready for 5 minutes"
+              description: "Pod {{ $labels.pod }} has been unready since {{ $value }}"
+
+      - name: kalemart.infrastructure
+        interval: 30s
+        rules:
+          - alert: NodeNotReady
+            expr: |
+              kube_node_status_condition{condition="Ready", status="true"} == 0
+            for: 5m
+            labels:
+              severity: critical
+              team: sre
+              service: kubernetes
+            annotations:
+              summary: "Kubernetes node {{ $labels.node }} is not ready"
+              description: "Node {{ $labels.node }} has been NotReady for more than 5 minutes."
+              runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/node-not-ready.md"
+
+          - alert: DeploymentUnavailable
+            expr: |
+              kube_deployment_status_replicas_unavailable{namespace=~"kalemart|cloudflared|observability"} > 0
+            for: 5m
+            labels:
+              severity: critical
+              team: sre
+              service: kubernetes
+            annotations:
+              summary: "Deployment {{ $labels.namespace }}/{{ $labels.deployment }} has unavailable replicas"
+              description: "{{ $labels.deployment }} has {{ $value }} unavailable replica(s). Check rollout, pod events, and recent image changes."
+              runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/deployment-unavailable.md"
+
+          - alert: PodHighCPU
+            expr: |
+              (
+                sum by (namespace, pod) (
+                  rate(container_cpu_usage_seconds_total{namespace=~"kalemart|cloudflared|observability", container!="", image!=""}[5m])
+                )
+                /
+                sum by (namespace, pod) (
+                  kube_pod_container_resource_limits{namespace=~"kalemart|cloudflared|observability", resource="cpu"}
+                )
+              ) > 0.9
+            for: 10m
+            labels:
+              severity: warning
+              team: sre
+              service: kubernetes
+            annotations:
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} CPU above 90% of limit"
+              description: "CPU saturation can cause latency and throttling. Check pod CPU, request rate, and HPA status."
+              runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/high-cpu.md"
+
+          - alert: PodHighMemory
+            expr: |
+              (
+                sum by (namespace, pod) (
+                  container_memory_working_set_bytes{namespace=~"kalemart|cloudflared|observability", container!="", image!=""}
+                )
+                /
+                sum by (namespace, pod) (
+                  kube_pod_container_resource_limits{namespace=~"kalemart|cloudflared|observability", resource="memory"}
+                )
+              ) > 0.9
+            for: 10m
+            labels:
+              severity: warning
+              team: sre
+              service: kubernetes
+            annotations:
+              summary: "Pod {{ $labels.namespace }}/{{ $labels.pod }} memory above 90% of limit"
+              description: "Memory saturation increases OOMKill risk. Check memory trend, logs, and recent deploys."
+              runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/high-memory.md"
+
+          - alert: CloudflaredTunnelDown
+            expr: |
+              kube_deployment_status_replicas_available{namespace="cloudflared", deployment="cloudflared"} < 1
+            for: 2m
+            labels:
+              severity: critical
+              team: sre
+              service: cloudflared
+            annotations:
+              summary: "Cloudflare Tunnel has no available replicas"
+              description: "Public traffic may fail because cloudflared has no available pod. Check cloudflared logs, credentials, and ingress connectivity."
+              runbook: "https://github.com/sreekanthca6/kalemart/blob/main/docs/runbooks/cloudflared-down.md"
+
+      - name: kalemart.slo
+        interval: 30s
+        rules:
+          - alert: SLOErrorBudgetFastBurn
+            expr: |
+              (
+                sum(rate(kalemart_http_errors_total{job="kalemart-backend"}[1h]))
+                /
+                clamp_min(sum(rate(kalemart_http_requests_total{job="kalemart-backend"}[1h])), 1)
+              ) > (10 * 0.005)
+            for: 5m
+            labels:
+              severity: critical
+              team: sre
+              slo: availability
+            annotations:
+              summary: "SLO fast burn — error budget burning at 10x rate"
+              description: "Burning error budget 10x faster than sustainable. Current error rate: {{ $value | humanizePercentage }}"
+
+          - alert: SLOErrorBudgetSlowBurn
+            expr: |
+              (
+                sum(rate(kalemart_http_errors_total{job="kalemart-backend"}[6h]))
+                /
+                clamp_min(sum(rate(kalemart_http_requests_total{job="kalemart-backend"}[6h])), 1)
+              ) > (2 * 0.005)
+            for: 15m
+            labels:
+              severity: warning
+              team: sre
+              slo: availability
+            annotations:
+              summary: "SLO slow burn — error budget at risk"
+              description: "Burning error budget 2x faster than sustainable over 6h. Current error rate: {{ $value | humanizePercentage }}"
+
 alertmanager:
   enabled: true
+  extraSecretMounts:
+    - name: alertmanager-slack-webhook
+      secretName: alertmanager-slack-webhook
+      mountPath: /etc/alertmanager/secrets/slack-webhook
+      readOnly: true
   config:
     global:
       resolve_timeout: 5m
@@ -44,20 +260,33 @@ alertmanager:
       group_wait: 10s
       group_interval: 30s
       repeat_interval: 1h
-      receiver: sre-agent
+      receiver: sre-agent-and-slack
       routes:
         - match:
             severity: critical
-          receiver: sre-agent
+          receiver: sre-agent-and-slack
           group_wait: 5s          # page faster for critical
+          repeat_interval: 30m
         - match:
             severity: warning
-          receiver: sre-agent
+          receiver: sre-agent-and-slack
     receivers:
-      - name: sre-agent
+      - name: sre-agent-and-slack
         webhook_configs:
           - url: "http://kalemart-sre-agent.kalemart.svc.cluster.local:8080/webhook/alertmanager"
             send_resolved: false
+        slack_configs:
+          - api_url_file: /etc/alertmanager/secrets/slack-webhook/url
+            channel: "#kalemart-alerts"
+            send_resolved: true
+            title: "{{ .Status | toUpper }} {{ .CommonLabels.severity | toUpper }}: {{ .CommonLabels.alertname }}"
+            text: >-
+              {{ range .Alerts -}}
+              *Service:* {{ .Labels.service }}
+              *Summary:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              *Runbook:* {{ .Annotations.runbook }}
+              {{ end }}
 
 prometheus-pushgateway:
   enabled: false

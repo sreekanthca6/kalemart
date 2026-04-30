@@ -1,6 +1,8 @@
 # KaleMart24 — Multi-Tenant Grocery Management Platform
 
-**🌐 Live demo: [kalemart.sreekanthp.com](https://kalemart.sreekanthp.com)**
+**🌐 Live demo:** [kalemart.sreekanthp.com](https://kalemart.sreekanthp.com)
+
+**📊 Public Grafana dashboards:** [grafana.kalemart.sreekanthp.com](https://grafana.kalemart.sreekanthp.com) *(read-only viewer)*
 
 A production-grade, multi-tenant SaaS platform for grocery store chains — built to demonstrate full-stack engineering, Kubernetes operations, observability, and autonomous SRE practices.
 
@@ -64,9 +66,12 @@ Prometheus alert fires
 
 ### Observability Stack
 - **Prometheus** — scrapes backend, AI service, and OTel Collector metrics
+- **Grafana** — public read-only dashboards at `grafana.kalemart.sreekanthp.com`
 - **Tempo** — distributed traces via OTel SDK (Node.js + Python)
-- **Alert rules** — 10 rules across 5 groups: latency, errors, pods, DB, SLO burn rate
+- **Alert rules** — latency, errors, pods, infrastructure, and SLO burn rate
 - **SLO burn rate alerts** — fast-burn (1h window, 10× budget) fires in ≤ 5 minutes
+
+Recruiter access is intentionally read-only: production Grafana enables anonymous `Viewer` access, loads the Kalemart dashboard ConfigMap through Argo CD, and is exposed through Cloudflare Tunnel at `https://grafana.kalemart.sreekanthp.com`.
 
 ## Tech Stack
 
@@ -125,6 +130,15 @@ helm install kalemart ./helm/kalemart \
 ### 4. Install observability stack
 ```bash
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+
+# Slack notifications for Prometheus alerts.
+# The webhook URL is mounted into Alertmanager from a Secret, never committed to Git.
+kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic alertmanager-slack-webhook \
+  -n observability \
+  --from-literal=url="$SLACK_WEBHOOK_URL" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 helm install prometheus prometheus-community/prometheus \
   -n observability --create-namespace \
   -f observability/prometheus-values.yaml
@@ -132,20 +146,32 @@ helm install prometheus prometheus-community/prometheus \
 kubectl apply -f observability/alert-rules.yaml
 ```
 
-### 5. Port-forward & explore
+For local OrbStack testing, `./scripts/deploy-local.sh dev` uses `observability/helmfile.local.yaml` so Grafana points to `localhost` instead of production:
+
 ```bash
-kubectl port-forward svc/kalemart-frontend 3000:3000 -n kalemart &
-kubectl port-forward svc/kalemart-sre-agent 8888:8080 -n kalemart &
-# Open http://localhost:3000
+# Required if you want to test Slack alert delivery locally.
+export SLACK_WEBHOOK_URL="https://hooks.slack.com/services/..."
+kubectl create namespace observability --dry-run=client -o yaml | kubectl apply -f -
+kubectl create secret generic alertmanager-slack-webhook \
+  -n observability \
+  --from-literal=url="$SLACK_WEBHOOK_URL" \
+  --dry-run=client -o yaml | kubectl apply -f -
+
+./scripts/deploy-local.sh dev
 ```
 
-### 6. Trigger a demo incident
+### 5. Port-forward & explore
 ```bash
-curl -X POST http://localhost:8888/trigger \
-  -H "Content-Type: application/json" \
-  -d '{"alertname":"TaxAPIHighLatency","severity":"warning","summary":"p99 tax latency > 500ms"}'
-# Watch Slack — the agent investigates and posts an RCA
+./scripts/port-forward.sh
+# Frontend:     http://localhost:3000
+# Grafana:      http://localhost:3001
+# Prometheus:   http://localhost:9090
+# Alertmanager: http://localhost:9093
 ```
+
+### 6. Explore the SRE showcase
+
+Open `http://localhost:3000/ops` to see the recruiter-facing control room. From there, open Grafana dashboards for SRE overview, API latency, platform infrastructure, Prometheus alerts, AI service health, and inventory business metrics.
 
 ## Project Structure
 

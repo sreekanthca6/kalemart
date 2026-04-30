@@ -73,25 +73,24 @@ data:
         },
         {
           "id": 4,
-          "title": "Inventory Updates / min",
+          "title": "Inventory Risk Signals",
           "type": "timeseries",
           "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
-          "targets": [{
-            "expr": "rate(kalemart_inventory_updates_total[1m]) * 60",
-            "legendFormat": "Updates/min"
-          }]
+          "targets": [
+            { "expr": "kalemart_inventory_low_stock_total", "legendFormat": "low stock" },
+            { "expr": "kalemart_inventory_out_of_stock_total", "legendFormat": "out of stock" }
+          ]
         },
         {
           "id": 5,
-          "title": "Recent Inventory Logs",
-          "type": "logs",
+          "title": "What this proves",
+          "type": "text",
           "gridPos": { "x": 0, "y": 12, "w": 24, "h": 8 },
-          "datasource": { "type": "loki", "uid": "loki" },
-          "targets": [{
-            "expr": "{service_name=\"kalemart-backend\"} |= \"inventory\"",
-            "legendFormat": ""
-          }]
+          "options": {
+            "mode": "markdown",
+            "content": "These are real business metrics emitted by Kalemart through OpenTelemetry and stored in Prometheus. They connect application behavior to SRE outcomes: stock risk, customer impact, and alert thresholds."
+          }
         }
       ]
     }
@@ -111,8 +110,8 @@ data:
           "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "targets": [{
-            "expr": "sum(rate(http_server_duration_count[1m])) by (http_route)",
-            "legendFormat": "{{http_route}}"
+            "expr": "sum(rate(kalemart_http_requests_total[1m])) by (route)",
+            "legendFormat": "{{route}}"
           }]
         },
         {
@@ -123,15 +122,15 @@ data:
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "targets": [
             {
-              "expr": "histogram_quantile(0.50, sum(rate(http_server_duration_bucket[5m])) by (le)) * 1000",
+              "expr": "histogram_quantile(0.50, sum(rate(kalemart_http_request_duration_ms_milliseconds_bucket[5m])) by (le))",
               "legendFormat": "P50"
             },
             {
-              "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_bucket[5m])) by (le)) * 1000",
+              "expr": "histogram_quantile(0.95, sum(rate(kalemart_http_request_duration_ms_milliseconds_bucket[5m])) by (le))",
               "legendFormat": "P95"
             },
             {
-              "expr": "histogram_quantile(0.99, sum(rate(http_server_duration_bucket[5m])) by (le)) * 1000",
+              "expr": "histogram_quantile(0.99, sum(rate(kalemart_http_request_duration_ms_milliseconds_bucket[5m])) by (le))",
               "legendFormat": "P99"
             }
           ]
@@ -148,7 +147,7 @@ data:
             }
           },
           "targets": [{
-            "expr": "100 * sum(rate(http_server_duration_count{http_status_code=~\"5..\"}[1m])) / sum(rate(http_server_duration_count[1m]))",
+            "expr": "100 * (sum(rate(kalemart_http_errors_total[1m])) or vector(0)) / clamp_min(sum(rate(kalemart_http_requests_total[1m])), 1)",
             "legendFormat": "Error %"
           }]
         },
@@ -182,13 +181,13 @@ data:
           "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "targets": [{
-            "expr": "rate(kalemart_ai_requests_total[1m]) * 60",
+            "expr": "sum(rate(kalemart_ai_http_requests_total[1m])) * 60",
             "legendFormat": "Requests/min"
           }]
         },
         {
           "id": 2,
-          "title": "Claude API Latency P95 (ms)",
+          "title": "AI Service Latency P95 (ms)",
           "type": "gauge",
           "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
@@ -208,43 +207,356 @@ data:
             }
           },
           "targets": [{
-            "expr": "histogram_quantile(0.95, sum(rate(kalemart_ai_claude_duration_bucket[5m])) by (le)) * 1000",
+              "expr": "histogram_quantile(0.95, sum(rate(kalemart_ai_http_request_duration_ms_milliseconds_bucket[5m])) by (le))",
             "legendFormat": "P95"
           }]
         },
         {
           "id": 3,
-          "title": "Reorder Suggestions Generated",
+          "title": "AI 5xx Errors / min",
           "type": "stat",
           "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
           "datasource": { "type": "prometheus", "uid": "prometheus" },
           "targets": [{
-            "expr": "kalemart_ai_reorder_suggestions_total",
-            "legendFormat": "Suggestions"
+              "expr": "(sum(rate(kalemart_ai_http_requests_total{status_class=\"5xx\"}[1m])) or vector(0)) * 60",
+              "legendFormat": "5xx/min"
           }]
         },
         {
           "id": 4,
-          "title": "AI Service Traces",
-          "type": "table",
+          "title": "AI Traffic by Route",
+          "type": "timeseries",
           "gridPos": { "x": 0, "y": 8, "w": 24, "h": 8 },
-          "datasource": { "type": "tempo", "uid": "tempo" },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
           "targets": [{
-            "queryType": "nativeSearch",
-            "serviceName": "kalemart-ai-service",
-            "limit": 20
+            "expr": "sum by (route, status_class) (rate(kalemart_ai_http_requests_total[5m]))",
+            "legendFormat": "{{route}} {{status_class}}"
           }]
         },
         {
           "id": 5,
-          "title": "AI Service Logs",
-          "type": "logs",
+          "title": "AI observability note",
+          "type": "text",
           "gridPos": { "x": 0, "y": 16, "w": 24, "h": 8 },
-          "datasource": { "type": "loki", "uid": "loki" },
-          "targets": [{
-            "expr": "{service_name=\"kalemart-ai-service\"}",
-            "legendFormat": ""
-          }]
+          "options": {
+            "mode": "markdown",
+            "content": "This local dashboard intentionally uses Prometheus metrics that are confirmed to exist. Tempo is wired separately for traces, but this panel avoids showing an empty trace search when no AI trace traffic has been generated."
+          }
+        }
+      ]
+    }
+  platform-infrastructure.json: |
+    {
+      "title": "Kalemart — Platform Infrastructure",
+      "uid": "kalemart-platform",
+      "tags": ["kalemart", "kubernetes", "infrastructure"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "30s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Cluster Nodes Ready",
+          "type": "stat",
+          "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(kube_node_status_condition{condition=\"Ready\", status=\"true\"})", "legendFormat": "ready nodes" }]
+        },
+        {
+          "id": 2,
+          "title": "Kalemart Pods Ready",
+          "type": "stat",
+          "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(kube_pod_status_ready{namespace=\"kalemart\", condition=\"true\"})", "legendFormat": "ready pods" }]
+        },
+        {
+          "id": 3,
+          "title": "Pod Restarts in 15m",
+          "type": "stat",
+          "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 },
+                  { "color": "red", "value": 3 }
+                ]
+              }
+            }
+          },
+          "targets": [{ "expr": "sum(increase(kube_pod_container_status_restarts_total{namespace=\"kalemart\"}[15m]))", "legendFormat": "restarts" }]
+        },
+        {
+          "id": 4,
+          "title": "Unavailable Deployments",
+          "type": "stat",
+          "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 1 }
+                ]
+              }
+            }
+          },
+          "targets": [{ "expr": "sum(kube_deployment_status_replicas_unavailable{namespace=\"kalemart\"})", "legendFormat": "unavailable" }]
+        },
+        {
+          "id": 5,
+          "title": "CPU Requests by Pod",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 4, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum by (pod) (kube_pod_container_resource_requests{namespace=\"kalemart\", resource=\"cpu\"})", "legendFormat": "{{pod}}" }]
+        },
+        {
+          "id": 6,
+          "title": "Memory Requests by Pod",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 4, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum by (pod) (kube_pod_container_resource_requests{namespace=\"kalemart\", resource=\"memory\"})", "legendFormat": "{{pod}}" }]
+        },
+        {
+          "id": 7,
+          "title": "CPU Requests vs Limits",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum(kube_pod_container_resource_requests{namespace=\"kalemart\", resource=\"cpu\"})", "legendFormat": "requested cores" },
+            { "expr": "sum(kube_pod_container_resource_limits{namespace=\"kalemart\", resource=\"cpu\"})", "legendFormat": "limit cores" }
+          ]
+        },
+        {
+          "id": 8,
+          "title": "Memory Requests vs Limits",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "sum(kube_pod_container_resource_requests{namespace=\"kalemart\", resource=\"memory\"})", "legendFormat": "requested" },
+            { "expr": "sum(kube_pod_container_resource_limits{namespace=\"kalemart\", resource=\"memory\"})", "legendFormat": "limit" }
+          ]
+        },
+        {
+          "id": 9,
+          "title": "Pod Status by Phase",
+          "type": "barchart",
+          "gridPos": { "x": 0, "y": 20, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum by (phase) (kube_pod_status_phase{namespace=\"kalemart\"})", "legendFormat": "{{phase}}" }]
+        },
+        {
+          "id": 10,
+          "title": "Local platform metric coverage",
+          "type": "text",
+          "gridPos": { "x": 12, "y": 20, "w": 12, "h": 8 },
+          "options": {
+            "mode": "markdown",
+            "content": "This local OrbStack view uses kube-state-metrics, so it shows desired state, pod readiness, restarts, resource requests, and limits. Runtime CPU/memory usage requires kubelet/cAdvisor scraping, which is intentionally not shown here until that collector is enabled."
+          }
+        }
+      ]
+    }
+  sre-overview.json: |
+    {
+      "title": "Kalemart — SRE Overview",
+      "uid": "kalemart-sre-overview",
+      "tags": ["kalemart", "sre", "golden-signals"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "15s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Availability (non-5xx)",
+          "type": "gauge",
+          "gridPos": { "x": 0, "y": 0, "w": 6, "h": 6 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "percentunit",
+              "min": 0.95,
+              "max": 1,
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "red", "value": null },
+                  { "color": "orange", "value": 0.995 },
+                  { "color": "green", "value": 0.999 }
+                ]
+              }
+            }
+          },
+          "targets": [{ "expr": "1 - ((sum(rate(kalemart_http_errors_total[5m])) or vector(0)) / clamp_min(sum(rate(kalemart_http_requests_total[5m])), 1))", "legendFormat": "availability" }]
+        },
+        {
+          "id": 2,
+          "title": "Request Rate",
+          "type": "stat",
+          "gridPos": { "x": 6, "y": 0, "w": 6, "h": 6 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(rate(kalemart_http_requests_total[5m]))", "legendFormat": "rps" }]
+        },
+        {
+          "id": 3,
+          "title": "5xx Error Rate",
+          "type": "stat",
+          "gridPos": { "x": 12, "y": 0, "w": 6, "h": 6 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": { "defaults": { "color": { "mode": "fixed", "fixedColor": "red" } } },
+          "targets": [{ "expr": "sum(rate(kalemart_http_errors_total[5m])) or vector(0)", "legendFormat": "5xx/s" }]
+        },
+        {
+          "id": 4,
+          "title": "Active Alerts",
+          "type": "stat",
+          "gridPos": { "x": 18, "y": 0, "w": 6, "h": 6 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(ALERTS{alertstate=\"firing\", team=\"sre\"})", "legendFormat": "firing" }]
+        },
+        {
+          "id": 5,
+          "title": "p95 / p99 API Latency (ms)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 6, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "histogram_quantile(0.95, sum(rate(kalemart_http_request_duration_ms_milliseconds_bucket[5m])) by (le))", "legendFormat": "p95" },
+            { "expr": "histogram_quantile(0.99, sum(rate(kalemart_http_request_duration_ms_milliseconds_bucket[5m])) by (le))", "legendFormat": "p99" }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Traffic by Route",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 6, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum by (route) (rate(kalemart_http_requests_total[5m]))", "legendFormat": "{{route}}" }]
+        },
+        {
+          "id": 7,
+          "title": "Error Budget Burn (1h)",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 14, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "((sum(rate(kalemart_http_errors_total[1h])) or vector(0)) / clamp_min(sum(rate(kalemart_http_requests_total[1h])), 1)) / 0.005", "legendFormat": "burn multiple" }]
+        },
+        {
+          "id": 8,
+          "title": "Saturation — Pod Restarts",
+          "type": "timeseries",
+          "gridPos": { "x": 12, "y": 14, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum by (pod) (increase(kube_pod_container_status_restarts_total{namespace=\"kalemart\"}[15m]))", "legendFormat": "{{pod}}" }]
+        },
+        {
+          "id": 9,
+          "title": "What data is real?",
+          "type": "text",
+          "gridPos": { "x": 0, "y": 22, "w": 24, "h": 4 },
+          "options": {
+            "mode": "markdown",
+            "content": "This dashboard uses real local OrbStack Kubernetes data plus Kalemart OpenTelemetry metrics exported to the OTel Collector and remote-written into Prometheus. If an app panel is empty, generate traffic against the frontend/backend and wait one scrape interval."
+          }
+        }
+      ]
+    }
+  prometheus-alerts.json: |
+    {
+      "title": "Kalemart — Prometheus Alerts",
+      "uid": "kalemart-alerts",
+      "tags": ["kalemart", "alerts", "slo"],
+      "timezone": "browser",
+      "schemaVersion": 38,
+      "refresh": "15s",
+      "panels": [
+        {
+          "id": 1,
+          "title": "Firing Alerts",
+          "type": "stat",
+          "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "fieldConfig": {
+            "defaults": {
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 },
+                  { "color": "red", "value": 3 }
+                ]
+              }
+            }
+          },
+          "targets": [{ "expr": "sum(ALERTS{alertstate=\"firing\", team=\"sre\"}) or vector(0)", "legendFormat": "firing" }]
+        },
+        {
+          "id": 2,
+          "title": "Pending Alerts",
+          "type": "stat",
+          "gridPos": { "x": 6, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(ALERTS{alertstate=\"pending\", team=\"sre\"}) or vector(0)", "legendFormat": "pending" }]
+        },
+        {
+          "id": 3,
+          "title": "Critical Alerts",
+          "type": "stat",
+          "gridPos": { "x": 12, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(ALERTS{alertstate=\"firing\", severity=\"critical\"}) or vector(0)", "legendFormat": "critical" }]
+        },
+        {
+          "id": 4,
+          "title": "SLO Burn Alerts",
+          "type": "stat",
+          "gridPos": { "x": 18, "y": 0, "w": 6, "h": 4 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum(ALERTS{alertstate=\"firing\", slo=\"availability\"}) or vector(0)", "legendFormat": "slo" }]
+        },
+        {
+          "id": 5,
+          "title": "Alerts by Name",
+          "type": "table",
+          "gridPos": { "x": 0, "y": 4, "w": 24, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [{ "expr": "sum by (alertname, severity, service, alertstate) (ALERTS{team=\"sre\"})", "legendFormat": "{{alertname}}" }],
+          "transformations": [
+            { "id": "labelsToFields", "options": {} },
+            { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "count" } } }
+          ]
+        },
+        {
+          "id": 6,
+          "title": "Availability Error Ratio",
+          "type": "timeseries",
+          "gridPos": { "x": 0, "y": 12, "w": 12, "h": 8 },
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "targets": [
+            { "expr": "(sum(rate(kalemart_http_errors_total[5m])) or vector(0)) / clamp_min(sum(rate(kalemart_http_requests_total[5m])), 1)", "legendFormat": "5m" },
+            { "expr": "(sum(rate(kalemart_http_errors_total[1h])) or vector(0)) / clamp_min(sum(rate(kalemart_http_requests_total[1h])), 1)", "legendFormat": "1h" },
+            { "expr": "(sum(rate(kalemart_http_errors_total[6h])) or vector(0)) / clamp_min(sum(rate(kalemart_http_requests_total[6h])), 1)", "legendFormat": "6h" }
+          ]
+        },
+        {
+          "id": 7,
+          "title": "Alertmanager Notifications",
+          "type": "text",
+          "gridPos": { "x": 12, "y": 12, "w": 12, "h": 8 },
+          "options": {
+            "mode": "markdown",
+            "content": "Prometheus rules route to **Alertmanager**, then to two receivers:\n\n- **SRE Agent webhook** for automated investigation and RCA\n- **Slack #kalemart-alerts** for human notification\n\nThe Slack webhook is read from the Kubernetes Secret `alertmanager-slack-webhook`, key `url`."
+          }
         }
       ]
     }

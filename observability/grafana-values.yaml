@@ -1,5 +1,11 @@
 adminPassword: "kalemart-dev"   # override via secret in prod
 
+ingress:
+  enabled: true
+  ingressClassName: nginx
+  hosts:
+    - grafana.kalemart.sreekanthp.com
+
 persistence:
   enabled: false
 
@@ -19,7 +25,7 @@ datasources:
       - name: Prometheus
         type: prometheus
         uid: prometheus
-        url: http://prometheus-server.observability.svc.cluster.local:9090
+        url: http://prometheus-server.observability.svc.cluster.local
         access: proxy
         isDefault: true
         jsonData:
@@ -28,7 +34,7 @@ datasources:
       - name: Tempo
         type: tempo
         uid: tempo
-        url: http://tempo.observability.svc.cluster.local:3100
+        url: http://tempo.observability.svc.cluster.local:3200
         access: proxy
         jsonData:
           tracesToLogsV2:
@@ -73,9 +79,15 @@ dashboardsConfigMaps:
 
 grafana.ini:
   server:
-    root_url: "%(protocol)s://%(domain)s:%(http_port)s/"
+    root_url: "https://grafana.kalemart.sreekanthp.com/"
   analytics:
     reporting_enabled: false
     check_for_updates: false
+  auth.anonymous:
+    enabled: true
+    org_role: Viewer
+    hide_version: true
+  users:
+    viewers_can_edit: false
   unified_alerting:
     enabled: true
