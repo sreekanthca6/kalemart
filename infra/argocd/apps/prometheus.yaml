@@ -43,8 +43,8 @@ spec:
           # adminPassword patched by Ansible (not stored in Git)
           grafana.ini:
             server:
-              root_url: https://grafana.kalemart.sreekanthp.com/
-              domain: grafana.kalemart.sreekanthp.com
+              root_url: https://grafana.sreekanthp.com/
+              domain: grafana.sreekanthp.com
             auth.anonymous:
               enabled: true
               org_role: Viewer
@@ -58,7 +58,7 @@ spec:
             enabled: true
             ingressClassName: nginx
             hosts:
-              - grafana.kalemart.sreekanthp.com
+              - grafana.sreekanthp.com
             path: /
             pathType: Prefix
           service:

@@ -44,7 +44,7 @@ backend:
     PGPORT: "5432"
     PGDATABASE: "kalemart"
     PGUSER: "kalemart"
-    GRAFANA_URL: "https://grafana.kalemart.sreekanthp.com"
+    GRAFANA_URL: "https://grafana.sreekanthp.com"
     PROMETHEUS_URL: "http://prometheus-server.observability.svc.cluster.local:9090"
     ALERTMANAGER_URL: "http://prometheus-alertmanager.observability.svc.cluster.local:9093"
   resources:

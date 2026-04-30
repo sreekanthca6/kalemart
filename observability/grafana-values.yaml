@@ -4,7 +4,7 @@ ingress:
   enabled: true
   ingressClassName: nginx
   hosts:
-    - grafana.kalemart.sreekanthp.com
+    - grafana.sreekanthp.com
 
 persistence:
   enabled: false
@@ -79,7 +79,7 @@ dashboardsConfigMaps:
 
 grafana.ini:
   server:
-    root_url: "https://grafana.kalemart.sreekanthp.com/"
+    root_url: "https://grafana.sreekanthp.com/"
   analytics:
     reporting_enabled: false
     check_for_updates: false

@@ -2,7 +2,7 @@
 
 **🌐 Live demo:** [kalemart.sreekanthp.com](https://kalemart.sreekanthp.com)
 
-**📊 Public Grafana dashboards:** [grafana.kalemart.sreekanthp.com](https://grafana.kalemart.sreekanthp.com) *(read-only viewer)*
+**📊 Public Grafana dashboards:** [grafana.sreekanthp.com](https://grafana.sreekanthp.com) *(read-only viewer)*
 
 A production-grade, multi-tenant SaaS platform for grocery store chains — built to demonstrate full-stack engineering, Kubernetes operations, observability, and autonomous SRE practices.
 
@@ -66,12 +66,12 @@ Prometheus alert fires
 
 ### Observability Stack
 - **Prometheus** — scrapes backend, AI service, and OTel Collector metrics
-- **Grafana** — public read-only dashboards at `grafana.kalemart.sreekanthp.com`
+- **Grafana** — public read-only dashboards at `grafana.sreekanthp.com`
 - **Tempo** — distributed traces via OTel SDK (Node.js + Python)
 - **Alert rules** — latency, errors, pods, infrastructure, and SLO burn rate
 - **SLO burn rate alerts** — fast-burn (1h window, 10× budget) fires in ≤ 5 minutes
 
-Recruiter access is intentionally read-only: production Grafana enables anonymous `Viewer` access, loads the Kalemart dashboard ConfigMap through Argo CD, and is exposed through Cloudflare Tunnel at `https://grafana.kalemart.sreekanthp.com`.
+Recruiter access is intentionally read-only: production Grafana enables anonymous `Viewer` access, loads the Kalemart dashboard ConfigMap through Argo CD, and is exposed through Cloudflare Tunnel at `https://grafana.sreekanthp.com`.
 
 ## Tech Stack
 
@@ -94,7 +94,7 @@ Recruiter access is intentionally read-only: production Grafana enables anonymou
 - **Toil reduction** — "don't ask again" auto-approves repeated safe remediations
 - **Query performance tuning** — EXPLAIN ANALYZE, composite indexes, cost model correction
 - **Distributed tracing** — trace IDs flow from frontend → backend → AI service
-- **Chaos-ready** — manual trigger endpoint (`POST /trigger`) injects synthetic alerts for demos
+- **Production smoke checks** — live demo login, inventory API, Ops page, and public Grafana are verified after deploys
 
 ## Quick Start (Local Kubernetes)
 

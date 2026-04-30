@@ -74,9 +74,9 @@ Rules for AI agents:
 - **Cluster:** Remote VM (k3s) provisioned via `infra/terraform` + `infra/ansible`
 - **GitOps:** Argo CD watches `infra/argocd/apps/*.yaml` → those Applications point at this repo's `helm/` and `observability/` paths
 - **Public URL:** `https://kalemart.sreekanthp.com` via Cloudflare Tunnel (`infra/argocd/apps/cloudflared.yaml`)
-- **Public Grafana:** `https://grafana.kalemart.sreekanthp.com` via the same Cloudflare Tunnel with anonymous read-only Viewer access.
+- **Public Grafana:** `https://grafana.sreekanthp.com` via the same Cloudflare Tunnel with anonymous read-only Viewer access.
 - **Grafana dashboards:** Argo CD app `grafana-dashboards` applies `observability/grafana-dashboards-configmap.yaml`; the production Grafana sidecar loads ConfigMaps labeled `grafana_dashboard=1`.
-- **Cloudflare DNS requirement:** `grafana.kalemart.sreekanthp.com` must be configured as a Cloudflare Tunnel public hostname/CNAME for the URL to resolve publicly.
+- **Cloudflare DNS requirement:** `grafana.sreekanthp.com` must be configured as a Cloudflare Tunnel public hostname/CNAME for the URL to resolve publicly.
 - **Image registry:** `ghcr.io/sreekanthca6/kalemart/<svc>:<tag>`
 - **CI:** `.github/workflows/ci.yml` builds + pushes images. On `main` and `dev` branches it bumps image tags in `values.*.yaml` and commits with `[skip ci]` (see commit `d08d783` for an example).
 
@@ -257,26 +257,34 @@ CI then:
 ### 3c. Verify prod
 
 ```bash
+# Public end-to-end smoke test. This catches the demo-login and public-Grafana
+# failure modes that can still happen when pods are Running.
+./scripts/verify-prod.sh
+
 # Watch sync status (if you can reach the prod cluster)
 kubectl --context=<prod-context> -n argocd get applications
 
 # Or check the live URL
 curl -fsSL https://kalemart.sreekanthp.com/health
 curl -fsSL https://kalemart.sreekanthp.com  # frontend should 200
-curl -fsSL https://grafana.kalemart.sreekanthp.com/api/health
+curl -fsSL https://grafana.sreekanthp.com/api/health
 
 # Check what image SHA prod is on
 kubectl --context=<prod-context> get deploy -n kalemart \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.template.spec.containers[*].image}{"\n"}{end}'
 ```
 
-If `grafana.kalemart.sreekanthp.com` does not resolve, create the Cloudflare Tunnel public hostname/DNS route for tunnel `632d3823-1e7a-44f6-ad9f-0ab3452be703`:
+If `grafana.sreekanthp.com` does not resolve, create the Cloudflare Tunnel public hostname/DNS route for tunnel `632d3823-1e7a-44f6-ad9f-0ab3452be703`:
 
 ```bash
-cloudflared tunnel route dns 632d3823-1e7a-44f6-ad9f-0ab3452be703 grafana.kalemart.sreekanthp.com
+cloudflared tunnel route dns 632d3823-1e7a-44f6-ad9f-0ab3452be703 grafana.sreekanthp.com
 ```
 
 Argo CD must also sync `cloudflared`, `kube-prometheus`, and `grafana-dashboards`.
+
+GitHub Actions also runs **Production Smoke Test** after the production image
+build workflow succeeds and once per day. It checks the live app root, `/ops`,
+demo login, authenticated inventory, and public Grafana health.
 
 If Argo CD is out of sync, do **not** kubectl-edit prod. Either:
 - Sync via Argo CD UI / `argocd app sync kalemart`
