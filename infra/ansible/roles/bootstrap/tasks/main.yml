@@ -28,8 +28,10 @@
   changed_when: false
 
 - name: Install Argo CD
+  # Server-side apply: the applicationsets CRD is larger than the 256KB
+  # last-applied-configuration annotation that client-side apply would set.
   shell: >
-    k3s kubectl apply -n argocd -f
+    k3s kubectl apply --server-side --force-conflicts -n argocd -f
     https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
   become: yes
   changed_when: false
