@@ -122,6 +122,6 @@
       "spec":{"source":{"helm":{"parameters":[
         {"name":"grafana.adminPassword","value":"{{ grafana_admin_password }}"},
         {"name":"alertmanager.config.global.slack_api_url","value":"{{ slack_webhook_url }}"}
-      ]}}}'
+      ]}}}}'
   become: yes
   changed_when: false
